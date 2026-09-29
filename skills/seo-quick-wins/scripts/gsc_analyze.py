@@ -27,6 +27,8 @@ import json
 import re
 import sys
 import zipfile
+
+__version__ = "1.0.0"
 from collections import defaultdict
 
 # Rough organic CTR by position (blended desktop+mobile, industry studies).
@@ -34,7 +36,10 @@ from collections import defaultdict
 EXPECTED_CTR = {1: .28, 2: .15, 3: .10, 4: .075, 5: .055, 6: .045, 7: .035,
                 8: .03, 9: .025, 10: .02}
 QUESTION = re.compile(r"^(how|what|why|when|where|which|who|whose|can|could|does|do|did|is|are|"
-                      r"should|will|would|was|were|best way|difference between)\b|\?$", re.I)
+                      r"should|will|would|was|were|best way|difference between|"      # EN
+                      r"comment|pourquoi|quand|quel|quelle|quels|combien|où|qu'est|est-ce|"  # FR
+                      r"cómo|como|qué|que es|por qué|cuándo|cuál|dónde|"               # ES/PT
+                      r"wie|was|warum|wann|welche|wo)\b|\?$", re.I)                   # DE
 
 
 # --------------------------------------------------------------------------
@@ -42,18 +47,21 @@ QUESTION = re.compile(r"^(how|what|why|when|where|which|who|whose|can|could|does
 # --------------------------------------------------------------------------
 
 def _num(v):
+    """Parse GSC numbers in any locale: 1,234 / 1.234 / 1 234 / 0.33% / 0,33 %."""
     if v is None:
         return 0.0
-    s = str(v).strip().replace(",", "")
-    if s.endswith("%"):
-        try:
-            return float(s[:-1]) / 100
-        except ValueError:
-            return 0.0
+    s = str(v).strip().replace("\u00a0", "").replace("\u202f", "").replace(" ", "")
+    pct = s.endswith("%")
+    s = s.rstrip("%")
+    if "," in s and "." in s:  # both separators: the last one is the decimal mark
+        s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
+    elif "," in s:  # "1,234" is thousands; "12,5" / "0,33" is a decimal comma
+        s = s.replace(",", "") if re.fullmatch(r"\d{1,3}(,\d{3})+", s) else s.replace(",", ".")
     try:
-        return float(s)
+        n = float(s)
     except ValueError:
         return 0.0
+    return n / 100 if pct else n
 
 
 def _read_csv_text(text):
@@ -83,6 +91,16 @@ def load_tables(path):
 
 
 METRICS = ("clicks", "impressions", "ctr", "position")
+# Localized GSC column names (EN, FR, DE, ES, PT, IT, NL)
+ALIASES = {
+    "clicks": ("clicks", "clics", "klicks", "clics", "cliques", "clic", "klikken"),
+    "impressions": ("impressions", "impressionen", "impresiones", "impressões", "impressioni", "vertoningen"),
+    "ctr": ("ctr",),
+    "position": ("position", "posición", "posição", "posizione", "positie"),
+}
+_METRIC_RE = re.compile(r"^(.*?)\s*(" + "|".join(sorted({a for v in ALIASES.values() for a in v}, key=len,
+                                                         reverse=True)) + r")$", re.I)
+_CANON = {a: m for m, v in ALIASES.items() for a in v}
 
 
 def split_columns(rows):
@@ -95,10 +113,10 @@ def split_columns(rows):
     cols = list(rows[0].keys()) if rows else []
     colmap, prefixes, dims = {}, [], []
     for c in cols:
-        m = re.match(r"^(.*?)\s*(clicks|impressions|ctr|position)$", c.strip(), re.I)
+        m = _METRIC_RE.match(c.strip())
         if m:
             prefix = m.group(1).strip()
-            colmap[(prefix, m.group(2).lower())] = c
+            colmap[(prefix, _CANON[m.group(2).lower()])] = c
             if prefix not in prefixes:
                 prefixes.append(prefix)
         else:
@@ -181,8 +199,10 @@ def decliners(rows, min_clicks_lost, swap=False):
 def cannibalization(rows, min_share):
     dims, recs = normalize(rows)
     low = [d.strip().lower() for d in dims]
-    qcol = next((d for d in low if "quer" in d or "keyword" in d), None)
-    pcol = next((d for d in low if "page" in d or "url" in d or "landing" in d), None)
+    qcol = next((d for d in low if any(k in d for k in ("quer", "keyword", "requête", "suchanfrage",
+                                                               "consulta", "mot"))), None)
+    pcol = next((d for d in low if any(k in d for k in ("page", "url", "landing", "seite", "página",
+                                                               "pagina"))), None)
     if not qcol or not pcol:
         sys.exit(f"Need both a query and a page column; found {dims}. Export query+page rows "
                  "(GSC API, Search Analytics for Sheets, or Looker Studio).")
@@ -239,7 +259,8 @@ def render_quick_wins(name, res, top):
     else:
         lines.append("None.")
     if res["questions"]:
-        lines += ["", f"### Question queries ({len(res['questions'])}) - answer in FAQ sections or quick-answer pages", ""]
+        lines += ["", f"### Question queries ({len(res['questions'])}) - "
+                      "answer in FAQ sections or quick-answer pages", ""]
         lines.append(table([d, "Impr.", "Clicks", "Pos."],
                            [[r["key"], _fmt(r["impressions"]), _fmt(r["clicks"]), f"{r['position']:.1f}"]
                             for r in res["questions"][:top]]))
@@ -284,6 +305,7 @@ def main(argv=None):
     ap.add_argument("--swap", action="store_true", help="decliners: treat the 2nd date range as current")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     a = ap.parse_args(argv)
 
     tables = load_tables(a.path)

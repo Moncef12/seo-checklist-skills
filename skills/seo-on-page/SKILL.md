@@ -18,9 +18,13 @@ On-page work decides whether a page that *can* rank actually *does*. The goal is
    ```bash
    python3 scripts/seo_check.py page https://example.com/page [more URLs or ./file.html]
    ```
-   The output includes the title and description with character counts, the heading outline, the "intro after H1", image stats, internal links, schema and canonical.
+   The output includes the title and description with character counts, the heading outline, the "intro after H1", image stats, internal links, schema and canonical. If the script can't run or the input is pasted text, read it directly and count characters carefully. Accurate counts are the point of this skill.
 2. **Check intent on the live SERP.** Use a SERP tool (e.g. DataForSEO `serp_organic_live_advanced`) or web search for the keyword. Note what ranks: page type (guide, listicle, tool, product, category, comparison), format, angle ("for beginners", "2026", "free"), freshness, and SERP features (PAA, video, local pack). If the page's type doesn't match, say so first. No title tweak fixes a product page competing against listicles.
-3. **Grade and rewrite the 7 items below.** For titles, descriptions, H1s and intros, write 2-3 options with character counts rather than advice.
+3. **Grade and rewrite the 7 items below.** For titles, descriptions, H1s and intros, write 2-3 options with character counts rather than advice. Verify every count before presenting it. Models miscount characters, and a wrong count defeats the purpose:
+   ```bash
+   python3 scripts/lengths.py --title "Option A" "Option B" --meta "Description A"
+   ```
+   The helper prints exact counts plus a pixel-width estimate (Google truncates titles around 600 px). Without a shell, count carefully and say the counts are approximate.
 4. **Apply.** If you're in the codebase, edit through the framework's metadata system. The seo-technical skill's `references/fixes.md` shows the patterns. Otherwise hand back a paste-ready table.
 
 ## The 7 on-page items

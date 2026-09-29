@@ -7,20 +7,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.9"
+          python-version: ${{ matrix.python }}
       - name: Shared scripts are in sync
         run: make check-sync
-      - name: Unit tests
+      - name: Unit + integration tests (offline, uses examples/demo_site.py)
         run: make test
+
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Ruff
+        run: pip install ruff && ruff check shared tests examples
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Validate plugin
+      - name: Validate plugin and marketplace manifests
         run: |
           npm install -g @anthropic-ai/claude-code
           claude plugin validate . --strict
           claude plugin validate .claude-plugin/plugin.json --strict
+      - name: Package skills
+        run: make package

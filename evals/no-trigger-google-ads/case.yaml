@@ -1,0 +1,21 @@
+schema_version: "1.0"
+name: no-trigger-google-ads
+description: Near-miss - paid search, not SEO. The SEO skills should stay out of the way.
+tags: [negative]
+execution:
+  max_turns: 8
+  allowed_tools: [Read, Glob, Grep, Skill]
+  prompt: |
+    Set up a Google Ads search campaign structure for my invoicing SaaS with a $30/day budget - ad groups,
+    match types and a couple of example ads.
+graders:
+  - name: useful-ads-answer
+    type: llm
+    criteria: Gives a concrete Google Ads campaign structure with ad groups, keyword match types and example ads.
+  - name: seo-skills-not-used
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 0
+    max: 0
+    arm: with-only

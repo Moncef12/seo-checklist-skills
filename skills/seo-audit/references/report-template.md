@@ -49,5 +49,5 @@ Use this structure for the audit deliverable. Write it as a Markdown file (`seo-
 Guidelines:
 - Every ❌/⚠️ gets a **Do:** line with a concrete action. Every ❓ gets a **Need:** line.
 - Quote evidence (the URL, status code, title text, numbers). Don't write "some pages".
-- Count characters in rewritten titles and descriptions, and show the count.
+- Count characters in rewritten titles and descriptions and show the count. Verify with `python3 scripts/lengths.py --title "..." --meta "..."` rather than counting by eye.
 - If you fixed things in the codebase, add a "Changes made" section listing files and what changed.

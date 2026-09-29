@@ -26,11 +26,18 @@ python3 scripts/gsc_analyze.py decliners  ~/Downloads/compare-export.zip
 ```
 Options: `--min-impressions 50` for small sites (the default is 100), `--top 50`, `--json`. In compare exports the first date range is treated as current; pass `--swap` if the columns are reversed.
 
+**If the script can't run** (no shell, sandboxed path, zip unreadable, or the data was pasted), don't stop and hand the problem back. Read the CSVs or the table directly and apply the same rules by hand:
+- **Low CTR:** position ≤ 10, impressions at or above the floor, and CTR below half the expected CTR for that position. Expected CTR by rounded position: 1 = 28%, 2 = 15%, 3 = 10%, 4 = 7.5%, 5 = 5.5%, 6 = 4.5%, 7 = 3.5%, 8 = 3%, 9 = 2.5%, 10 = 2%. Missed clicks ≈ impressions × (expected − actual).
+- **Page 2:** position 10.5-20.5 with meaningful impressions.
+- **Questions:** queries starting with how, what, why, can, is, and so on, or ending in "?".
+
+Only a `.zip` needs unpacking. If that's impossible, ask for the CSVs inside it, and still answer everything that doesn't need the data (e.g. how to get a compare export).
+
 ## The 5 quick wins
 
 **Q1. High impressions, low CTR → rewrite the title and meta description.** The script flags rows whose CTR is under half the typical CTR for their position, sorted by estimated missed clicks. For each flagged page:
 1. Look at the live SERP for its top query. What are competitors promising? Are SERP features (AI Overview, PAA, video) pushing it down? If a feature is taking the clicks, a rewrite helps less, so say so.
-2. Write 2 title options (50-60 characters) and a meta description (120-160 characters) that match the query's wording, add a concrete hook (a number, the year, "free", an outcome), and line up with the H1.
+2. Write 2 title options (50-60 characters) and a meta description (120-160 characters) that match the query's wording, add a concrete hook (a number, the year, "free", an outcome), and line up with the H1. Check the counts with `python3 scripts/lengths.py --title "..." --meta "..."`.
 3. Record the before-CTR so the owner can compare after 2-4 weeks.
 
 **Q2. `site:yourdomain.com` on Google → fix titles that are cut off or miss the keyword.** Search `site:domain.com` (and `site:domain.com/blog`) with web search, or ask the owner for a screenshot. Look for titles ending in "…", titles Google rewrote (different from the `<title>`), boilerplate titles ("Home", "Untitled", duplicates), and titles missing the page's main keyword. Cross-check with `seo_check.py page` from the seo-on-page or seo-audit skill for exact lengths.

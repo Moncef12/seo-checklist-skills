@@ -1,0 +1,30 @@
+schema_version: "1.0"
+name: content-cannibalization
+description: Diagnose cannibalization and produce an actionable consolidation plan.
+tags: [seo-content]
+execution:
+  max_turns: 10
+  allowed_tools: [Read, Glob, Grep, Skill]
+  prompt: |
+    Two of our pages keep swapping places for "invoice template": /templates (our main template gallery,
+    300 clicks/mo, avg pos 3) and /blog/invoice-template-guide (a 900-word post, 40 clicks/mo, avg pos 8.5).
+    Sometimes neither shows on page 1. What should we do?
+graders:
+  - name: diagnosis-and-owner
+    type: llm
+    criteria: |
+      Diagnoses keyword cannibalization, picks /templates as the owner URL with reasons (intent match, stronger
+      metrics), and offers the two valid paths: merge the post into /templates with a 301 redirect, or
+      re-target the post to a distinct informational intent (e.g. "how to fill out an invoice").
+  - name: actionable-deliverable
+    type: llm
+    criteria: |
+      Gives an executable plan: a redirect/merge mapping (old URL -> target, what content to keep), internal
+      link and anchor updates pointing to the owner, sitemap update, and how to check the result in Search
+      Console (query/page data) after the change.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

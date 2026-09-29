@@ -1,0 +1,37 @@
+schema_version: "1.0"
+name: onpage-rewrite
+description: Rewrite on-page elements for a target keyword with accurate character counts.
+tags: [seo-on-page]
+execution:
+  max_turns: 12
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    Can you make this page rank better for "invoice software for freelancers"? Here's the head and top of the body:
+
+    ```html
+    <title>Home</title>
+    <meta name="description" content="Welcome to Acme Invoice">
+    <body>
+    <h2>Welcome to Acme Invoice</h2>
+    <p>In today's fast-paced world, many freelancers struggle with getting paid on time.</p>
+    <img src="/hero.png">
+    ```
+graders:
+  - name: title-options-with-accurate-counts
+    type: llm
+    criteria: |
+      The response offers at least two alternative title tags, each containing the keyword or a close variant
+      and each labelled with a character count, and at least one option is stated to be 50-60 characters.
+      (Do not recount characters yourself; the counts are verified separately by a script.)
+  - name: meta-and-structure
+    type: llm
+    criteria: |
+      The response provides a rewritten meta description of roughly 120-160 characters with its character count,
+      flags that the page has no H1 and supplies one, rewrites the opening so the first sentence directly says
+      what the product does for freelancers, and flags the image with no alt text (suggesting descriptive alt).
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

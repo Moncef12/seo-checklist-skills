@@ -1,0 +1,32 @@
+schema_version: "1.0"
+name: technical-deindex
+description: robots.txt vs noindex misconception plus rich-results expectations.
+tags: [seo-technical]
+execution:
+  max_turns: 10
+  allowed_tools: [Read, Glob, Grep, Skill]
+  prompt: |
+    Two questions about my Next.js blog. 1) I added `Disallow: /old-blog/` to robots.txt three weeks ago to get
+    200 outdated posts out of Google, but they still show up (with no description). Why, and how do I actually
+    remove them? 2) Should I add FAQPage schema to every post so we get the FAQ dropdowns in Google results?
+graders:
+  - name: robots-vs-noindex
+    type: llm
+    criteria: |
+      Explains that robots.txt blocks crawling, not indexing, so Google can't see a noindex and keeps the URLs
+      indexed without a snippet; recommends allowing crawling and using noindex (meta or X-Robots-Tag) or
+      404/410, or 301 redirects for posts with a relevant replacement; mentions removing them from the sitemap
+      and/or the Search Console Removals tool for temporary hiding; gives a concrete Next.js way to do it
+      (e.g. metadata robots / headers / redirects in next.config).
+  - name: faq-rich-results-reality
+    type: llm
+    criteria: |
+      States that Google restricted FAQ rich results (since 2023) to well-known authoritative government and
+      health sites, so a typical blog will not get FAQ dropdowns, while noting schema can still help machines
+      understand the page - and does not promise the dropdowns.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

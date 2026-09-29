@@ -1,0 +1,38 @@
+schema_version: "1.0"
+name: gsc-export
+description: Analyze a raw Search Console zip export and prioritize quick wins.
+tags: [seo-quick-wins, scripted]
+context:
+  add_dirs: ["gsc-data"]
+execution:
+  max_turns: 20
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    I exported my Search Console performance data (last 3 months) - Queries.csv and Pages.csv are in the
+    gsc-data folder in your additional working directories. What should I fix first to get more traffic? Also I want to know which
+    pages are losing traffic.
+graders:
+  - name: quick-wins-found
+    type: llm
+    criteria: |
+      The response identifies "invoice software" (position ~4, 12,000 impressions, ~0.33% CTR) as a
+      high-impression, low-CTR opportunity to fix by rewriting the title/meta description, identifies
+      "how to write an invoice" and "what is a pro forma invoice" as page-2 (positions 11-20) pages to
+      strengthen, and suggests answering the question-style queries directly (FAQ-style sections).
+  - name: decliners-need-comparison
+    type: llm
+    criteria: |
+      The response explains that this export covers a single date range, so it cannot show which pages are
+      losing traffic, and tells the user how to get that data (a date-comparison export in Search Console,
+      e.g. compare last 3 months to the previous period) instead of guessing decliners from this data.
+  - name: estimates-framed-honestly
+    type: llm
+    criteria: |
+      Any estimate of extra clicks is presented as rough / directional (not a guarantee), and the response
+      ends in a clear prioritized action list.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

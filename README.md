@@ -1,26 +1,65 @@
+<p align="center">
+  <img src="docs/banner.png" alt="SEO Checklist Skills for Claude" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Moncef12/seo-checklist-skills/actions/workflows/ci.yml"><img src="https://github.com/Moncef12/seo-checklist-skills/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/python-3.9%E2%80%933.13-blue" alt="Python 3.9-3.13">
+  <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
+  <img src="https://img.shields.io/badge/Claude%20Code-plugin-D97757" alt="Claude Code plugin">
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT">
+</p>
+
 # SEO Checklist Skills for Claude
 
-The **40-point SEO checklist** as six Claude skills. Ask Claude to "audit my SEO" or "what should I fix first in Search Console?" and it runs real checks, grades every item, and hands back a prioritized plan with paste-ready fixes. With the site's codebase open, it can also apply those fixes.
+The **40-point SEO checklist** as six Claude skills. Ask Claude to *"audit my SEO"* or *"what should I fix first in Search Console?"* and it runs real checks on the site, grades every checklist item honestly, and delivers a prioritized plan with ready-to-paste fixes. With the site's codebase open, it can also apply those fixes.
 
-Works in **Claude Code** (as a plugin) and **Claude.ai / Claude Desktop** (as uploaded skills).
+Works in **Claude Code** (as a plugin) and in **Claude.ai / Claude Desktop** (as uploaded skills).
 
 | Skill | Checklist items | Triggers on |
 |---|---|---|
 | **seo-audit** | All 40, orchestrated into one prioritized report | "audit my SEO", "why am I not ranking", "SEO health check" |
-| **seo-technical** | GSC/GA4 · sitemaps · indexing · robots/noindex · canonicals · Core Web Vitals · mobile · JS crawlability · broken links/redirects · clean URLs · breadcrumbs · orphans · schema | indexing issues, sitemaps, canonicals, redirects, CWV, structured data |
+| **seo-technical** | GSC/GA4 · sitemaps · indexing · robots/noindex · canonicals · Core Web Vitals · mobile · JS crawlability · broken links/redirects · clean URLs · breadcrumbs · orphans · schema | indexing problems, sitemaps, canonicals, redirects, CWV, structured data |
 | **seo-on-page** | Search intent · titles 50-60 chars · unique meta descriptions · headings · answer in first 2 lines · images/alt · internal links | "make this page rank", title/meta rewrites, "is this page optimized" |
 | **seo-content** | Competitor keywords · high-volume/low-KD · cannibalization · merge thin pages · topic clusters · feature & use-case pages · comparison/alternatives · listicles · E-E-A-T · dateModified | keyword research, content plans, cannibalization, comparison pages |
 | **seo-quick-wins** | Low CTR · `site:` title check · page-2 pages · People Also Ask · decliners | GSC exports, "quick wins", "traffic dropped" |
 | **seo-links** | Brand mentions · backlink gap · "best X" lists · Reddit threads · Google Business Profile | backlinks, outreach, Reddit, local SEO |
 
-## What's inside
+## How it works
 
-- **`seo_check.py`** is a site and page checker built on the Python standard library only.
-  - The `site` command checks http/https/www consolidation, robots.txt, sitemaps (including indexes and gzip), and a URL sample for status, noindex and canonical mismatches. It also finds soft 404s, crawls for broken or redirecting internal links and cookie-bounce redirects, and lists orphan candidates.
-  - The `page` command checks the title and meta with character counts, the heading outline, the intro after the H1, images, internal links, JSON-LD types and validity, canonical, viewport, JS-rendering risk, and Core Web Vitals via PageSpeed Insights (`--psi`).
-- **`gsc_analyze.py`** takes a Google Search Console export (pass the `.zip` directly) and finds low-CTR rows, page-2 rankings, question queries, decliners (from compare-mode exports) and keyword cannibalization (from query+page data).
-- **References** load only when needed: framework-specific fixes (Next.js, Nuxt, Astro, SvelteKit, WordPress, nginx, Vercel, Netlify), the full checklist with verification methods, a report template, content page templates and outreach emails.
-- **Optional MCP integrations:** if a keyword or SERP tool is connected (DataForSEO, Ahrefs, Semrush), the skills use it for competitor keywords, keyword difficulty, SERP intent and People Also Ask. Without one, they fall back to web search and your exports, and they never invent search volumes.
+```mermaid
+flowchart LR
+    U["You: 'audit example.com'<br/>+ optional GSC export"] --> A[seo-audit skill]
+    A -->|runs| S1["seo_check.py site<br/>robots · sitemaps · indexability<br/>broken links · redirects · orphans"]
+    A -->|runs| S2["seo_check.py page --psi<br/>titles · meta · headings · schema<br/>images · Core Web Vitals"]
+    A -->|runs| S3["gsc_analyze.py<br/>low CTR · page 2 · questions<br/>decliners · cannibalization"]
+    A -.->|optional MCP| K["Keyword / SERP data<br/>DataForSEO · Ahrefs · Semrush"]
+    S1 & S2 & S3 & K --> G["Grade 40 items<br/>✅ ⚠️ ❌ ❓"]
+    G --> R["Prioritized report<br/>+ paste-ready rewrites"]
+    G -.->|codebase open| F["Apply fixes<br/>Next.js · Nuxt · Astro · WP"]
+    A -.->|deep dives| D["seo-technical · seo-on-page · seo-content<br/>seo-quick-wins · seo-links"]
+```
+
+- **Scripts do the deterministic work.** Fetching, parsing, exact character counting and CTR math run in tested Python scripts that use only the standard library, so there's nothing to install.
+- **Claude does the judgment.** It interprets search intent, prioritizes, and writes rewrites and plans.
+- **Honest grading.** Anything that can't be verified from outside (GSC setup, backlink profile) is marked ❓ with the exact data needed. It's never guessed, and search volumes are never invented.
+- **Works without scripts too.** In Claude.ai without code execution, or with pasted data, each skill falls back to applying the same rules by hand.
+
+## See it in action
+
+The repo ships a fictional SaaS site with **10 planted SEO issues** (`examples/demo_site.py`), so you can watch the whole flow locally:
+
+```bash
+make demo                                   # serves http://127.0.0.1:8799
+python3 skills/seo-technical/scripts/seo_check.py site http://127.0.0.1:8799
+```
+
+| Sample output | What it shows |
+|---|---|
+| [`examples/sample-audit-report.md`](examples/sample-audit-report.md) | **The full deliverable.** The `seo-audit` skill run end-to-end on the demo site plus a GSC export: 40-item scorecard, priorities, rewrites. |
+| [`examples/demo-site-check.md`](examples/demo-site-check.md) | Site-wide technical checker output. It catches all the planted issues: noindex page in the sitemap, soft 404, broken link, 2-hop redirect chain, cookie bounce, orphans. |
+| [`examples/demo-page-check.md`](examples/demo-page-check.md) | Page-level checker: title and meta character counts, heading outline, schema, images |
+| [`examples/demo-gsc-quick-wins.md`](examples/demo-gsc-quick-wins.md) | Search Console analyzer: low-CTR rows with estimated missed clicks, page-2 queries, FAQ candidates |
 
 ## Install
 
@@ -31,7 +70,7 @@ Works in **Claude Code** (as a plugin) and **Claude.ai / Claude Desktop** (as up
 /plugin install seo-checklist@seo-checklist-skills
 ```
 
-Skills are namespaced, e.g. `/seo-checklist:seo-audit`, but Claude also picks them up automatically from what you ask.
+Claude picks the right skill from what you ask. You can also call one directly, e.g. `/seo-checklist:seo-audit`.
 
 ### Claude Code (manual)
 
@@ -42,53 +81,55 @@ cp -r seo-checklist-skills/skills/* ~/.claude/skills/
 
 ### Claude.ai / Claude Desktop
 
-```bash
-make package   # builds dist/<skill>.zip for each skill
-```
+Download the per-skill zips from the [latest release](https://github.com/Moncef12/seo-checklist-skills/releases/latest), or build them with `make package`. Then upload them under **Settings > Capabilities > Skills**.
 
-Then go to **Settings > Capabilities > Skills > Upload skill** and upload each zip (code execution must be enabled).
-
-**Requirements:** Python 3.9+ for the bundled scripts. No pip installs are needed.
-
-## Usage examples
+## Usage
 
 ```text
 Audit the SEO of https://example.com - the pages that matter are /pricing and /blog.
 Here's my GSC export (~/Downloads/example.com-Performance.zip). What are my quick wins?
 Rewrite the title, meta and intro of app/blog/[slug]/page.tsx for "invoice software for freelancers".
 /blog/invoice-guide and /templates compete for "invoice template". What do I do?
-Plan a topic cluster and alternatives pages for our project management SaaS vs Asana and Trello.
+Plan a topic cluster and alternatives pages for our PM tool vs Asana and Trello.
 Find link opportunities: who links to Linear and Height but not to us?
 ```
 
-You can also run the scripts directly:
+### Use the checkers in CI
 
-```bash
-python3 skills/seo-technical/scripts/seo_check.py site https://example.com --sample 25 --crawl 100
-python3 skills/seo-on-page/scripts/seo_check.py page https://example.com/pricing --psi
-python3 skills/seo-quick-wins/scripts/gsc_analyze.py quick-wins ~/Downloads/gsc-export.zip
+Catch SEO regressions (noindex leaks, broken links, lost canonicals) before they ship:
+
+```yaml
+- run: python3 skills/seo-technical/scripts/seo_check.py site "$PREVIEW_URL" --crawl 200 --fail-on FAIL
 ```
 
-## How the skills are built
+| Script | Command | Useful flags |
+|---|---|---|
+| `seo_check.py` | `site URL` | `--sample N` · `--crawl N` · `--delay S` · `--workers N` · `--json` · `--fail-on FAIL\|WARN` |
+| `seo_check.py` | `page URL_OR_FILE...` | `--psi` (Core Web Vitals, `PSI_API_KEY` optional) · `--json` · `--fail-on` |
+| `gsc_analyze.py` | `quick-wins \| decliners \| cannibalization PATH` | `--min-impressions` · `--top` · `--swap` · `--json` |
+| `lengths.py` | `--title "..." --meta "..."` | Exact character counts plus a pixel-width estimate for truncation risk |
 
-The skills follow Anthropic's skill-authoring guidance:
+The crawler obeys robots.txt and can be throttled with `--delay`. The GSC analyzer reads localized exports (EN/FR/DE/ES/PT/IT/NL).
 
-- **Progressive disclosure.** Short, "pushy" descriptions (what the skill does and when to use it) are always in context. The SKILL.md bodies stay under ~150 lines, and long material lives in `references/`, one level deep, with a table of contents.
-- **Deterministic work goes in scripts.** Fetching, parsing, counting characters and CTR math live in tested scripts instead of being redone by the model on every run.
-- **Explain the why.** Instructions give reasons, such as "robots.txt blocks crawling, not indexing", instead of rigid MUST rules, so Claude can handle edge cases.
-- **Honest grading.** Items that can't be verified from outside (GSC setup, backlink profile) are marked ❓ with the data needed to settle them, never guessed.
-- **Self-contained skills.** Shared scripts live in `shared/` and are copied into each skill by `make sync`, so any single skill works on its own, and CI fails if the copies drift.
+## Quality
+
+- **22 offline tests:** unit tests plus an end-to-end run against the demo site, on Python 3.9, 3.11 and 3.13 in CI.
+- **Behavioral evals** with `claude plugin eval`: 7 realistic prompts, each run 3× **with and without** the plugin and graded by an LLM judge. The plugin scores **0.93 against 0.86** for the baseline, with the biggest gains on rewrites (+0.33) and consolidation plans (+0.17). The right skill fired in **18/18** SEO runs and **0/3** times on a Google Ads near-miss. Details and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
+- `claude plugin validate --strict`, ruff lint, and a sync check that keeps the shared scripts identical across skills.
 
 ## Development
 
 ```bash
-make sync        # copy shared/*.py into the skills that use them
-make test        # offline unit tests against fixtures
-make validate    # claude plugin validate . --strict
-claude plugin eval . --runs 1 -j 4   # behavioral evals (with vs. without the plugin)
+make sync       # copy shared/*.py into the skills that use them
+make test       # unit + integration tests (offline)
+make lint       # ruff
+make validate   # claude plugin validate --strict
+make demo       # serve the demo site
+make eval       # behavioral evals, with vs. without the plugin
+make package    # dist/<skill>.zip for Claude.ai
 ```
 
-The eval cases in `evals/<case>/` pair a realistic prompt with an LLM grader rubric. Add one whenever you find a failure mode.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the skill-writing conventions.
 
 ## Credits
 
@@ -96,4 +137,4 @@ The checklist is adapted from **"The only SEO checklist you'll need"** by [Okara
 
 ## License
 
-MIT
+[MIT](LICENSE) © Moncef Hassein-bey

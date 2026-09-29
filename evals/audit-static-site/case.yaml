@@ -1,0 +1,50 @@
+schema_version: "1.0"
+name: audit-static-site
+description: Full audit of a small site from its static HTML export; must find planted issues and be honest about what can't be verified.
+tags: [seo-audit, scripted]
+context:
+  add_dirs: ["acme-site"]
+execution:
+  max_turns: 40
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Skill, Bash, Write]
+  prompt: |
+    Can you do a full SEO audit of my invoicing SaaS before we launch? It isn't deployed yet, but the static
+    HTML export is in the `acme-site` folder in your additional working directories (index.html is the
+    homepage; file names map to URLs, e.g. blog__how-to-write-an-invoice.html is /blog/how-to-write-an-invoice).
+    Production domain will be https://acme-invoice.example. I haven't set up Search Console or analytics yet.
+    Give me the report right here in chat.
+graders:
+  - name: finds-planted-issues
+    type: llm
+    criteria: |
+      The response identifies at least 5 of these real issues in the files:
+      (1) the /pricing title is far too long (~79 characters);
+      (2) /pricing has no meta description;
+      (3) /pricing has two H1 tags;
+      (4) /pricing has no canonical tag;
+      (5) the homepage hero image has no alt attribute;
+      (6) /legacy is noindex (and should not be in a sitemap if intentional);
+      (7) /blog/invoice-template-guide is thin and overlaps/competes with /templates;
+      (8) the homepage links to /features/reports, which does not exist in the export;
+      (9) a blog post links to /old-pricing, which does not exist / is an outdated URL;
+      (10) /orphan-landing is not linked from any page.
+  - name: honest-unknowns
+    type: llm
+    criteria: |
+      The response explicitly treats things that cannot be verified from static files - e.g. Search Console/GA4
+      setup, sitemap submission to Google/Bing, Core Web Vitals field data, backlinks, Google Business Profile -
+      as unknown / not yet done / needs data, instead of marking them as passing or silently skipping them.
+      It covers all major areas: technical, on-page, content and links.
+  - name: prioritized-and-concrete
+    type: llm
+    criteria: |
+      The response gives a prioritized list of fixes (most important first) and at least one paste-ready
+      rewrite (e.g. a new /pricing title with its character count, or a new meta description), rather than
+      only generic advice.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

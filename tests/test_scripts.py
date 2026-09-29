@@ -10,6 +10,7 @@ FIX = os.path.join(HERE, "fixtures")
 sys.path.insert(0, os.path.join(HERE, "..", "shared"))
 
 import gsc_analyze  # noqa: E402
+import lengths  # noqa: E402
 import seo_check  # noqa: E402
 
 
@@ -64,6 +65,22 @@ class PageChecks(unittest.TestCase):
         self.assertIn("No H1", out.getvalue())
 
 
+class LengthChecks(unittest.TestCase):
+    def test_exact_counts_and_verdicts(self):
+        out = io.StringIO()
+        title = "Invoice Software for Freelancers: Get Paid Faster | Acme"
+        with contextlib.redirect_stdout(out):
+            lengths.main(["--title", title, "Home", "--meta", "x" * 170])
+        text = out.getvalue()
+        self.assertIn(f"| title | {len(title)} |", text)
+        self.assertIn("| title | 4 |", text)
+        self.assertIn("short (target 50-60)", text)
+        self.assertIn("long (target 120-160)", text)
+
+    def test_pixel_estimate_orders_widths(self):
+        self.assertGreater(lengths.px("WWWW"), lengths.px("iiii"))
+
+
 class GscChecks(unittest.TestCase):
     def test_quick_wins_from_zip(self):
         tables = gsc_analyze.load_tables(os.path.join(FIX, "gsc_export.zip"))
@@ -73,6 +90,21 @@ class GscChecks(unittest.TestCase):
         self.assertEqual({r["key"] for r in res["page_two"]},
                          {"how to write an invoice", "what is a pro forma invoice"})
         self.assertIn("how to write an invoice", [r["key"] for r in res["questions"]])
+
+    def test_number_parsing_all_locales(self):
+        n = gsc_analyze._num
+        self.assertEqual(n("1,234"), 1234)
+        self.assertEqual(n("12 000"), 12000)
+        self.assertEqual(n("1.234,5"), 1234.5)
+        self.assertAlmostEqual(n("0,33 %"), 0.0033)
+        self.assertAlmostEqual(n("4.5%"), 0.045)
+        self.assertEqual(n("4,2"), 4.2)
+
+    def test_french_export(self):
+        rows = gsc_analyze.load_tables(os.path.join(FIX, "Queries_fr.csv"))["Queries_fr.csv"]
+        res = gsc_analyze.quick_wins(rows, 100)
+        self.assertEqual([r["key"] for r in res["low_ctr"]], ["logiciel de facturation"])
+        self.assertEqual([r["key"] for r in res["page_two"]], ["comment faire une facture"])
 
     def test_decliners(self):
         rows = gsc_analyze.load_tables(os.path.join(FIX, "compare_pages.csv"))["compare_pages.csv"]

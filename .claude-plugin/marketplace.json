@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "SEO checklist skills for Claude Code and Claude.ai",
-    "version": "0.1.0"
+    "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "seo-checklist",
       "source": "./",
       "description": "Full SEO audits plus technical, on-page, content, quick-win and link-building skills with bundled checkers.",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "category": "marketing",
       "keywords": ["seo", "audit", "search-console", "content", "backlinks"]
     }

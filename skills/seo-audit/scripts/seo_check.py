@@ -29,6 +29,7 @@ import os
 import re
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -40,6 +41,7 @@ from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 
+__version__ = "1.0.0"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 seo-checklist-skills")
 MAX_BYTES = 5_000_000
@@ -82,6 +84,26 @@ CERT_HINT = ("SSL certificate verification failed on this machine. Fix: `pip ins
              "python.org macOS install run 'Install Certificates.command'; or re-run with --insecure.")
 
 
+_THROTTLE = {"delay": 0.0, "next": 0.0}
+_THROTTLE_LOCK = threading.Lock()
+
+
+def set_delay(seconds):
+    _THROTTLE["delay"] = max(0.0, seconds)
+
+
+def _throttle():
+    """Space request starts at least `delay` seconds apart across all threads."""
+    if _THROTTLE["delay"] <= 0:
+        return
+    with _THROTTLE_LOCK:
+        now = time.monotonic()
+        start = max(now, _THROTTLE["next"])
+        _THROTTLE["next"] = start + _THROTTLE["delay"]
+    if start > now:
+        time.sleep(start - now)
+
+
 def fetch(url, timeout=15, max_redirects=10, max_bytes=MAX_BYTES):
     """GET a URL, following redirects manually so the chain is recorded."""
     chain, current, t0 = [], url, time.time()
@@ -89,6 +111,7 @@ def fetch(url, timeout=15, max_redirects=10, max_bytes=MAX_BYTES):
     opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=_CTX),
                                          urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     for _ in range(max_redirects + 1):
+        _throttle()
         req = urllib.request.Request(current, headers={
             "User-Agent": UA,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -525,7 +548,8 @@ def pagespeed(url, strategy="mobile"):
         "field_overall": data.get("loadingExperience", {}).get("overall_category"),
         "lcp_ms": pick("LARGEST_CONTENTFUL_PAINT_MS"),
         "inp_ms": pick("INTERACTION_TO_NEXT_PAINT"),
-        "cls": (pick("CUMULATIVE_LAYOUT_SHIFT_SCORE") or 0) / 100 if pick("CUMULATIVE_LAYOUT_SHIFT_SCORE") is not None else None,
+        "cls": None if pick("CUMULATIVE_LAYOUT_SHIFT_SCORE") is None
+        else pick("CUMULATIVE_LAYOUT_SHIFT_SCORE") / 100,
         "lab_performance_score": round((lh.get("categories", {}).get("performance", {}).get("score") or 0) * 100),
         "lab_lcp": audits.get("largest-contentful-paint", {}).get("displayValue"),
         "lab_cls": audits.get("cumulative-layout-shift", {}).get("displayValue"),
@@ -585,14 +609,17 @@ def parse_sitemap(xml_bytes):
 
 def check_site(start, sample=20, crawl=40, workers=8):
     origin = normalize_origin(start)
-    host = urllib.parse.urlparse(origin).hostname
-    bare = host.removeprefix("www.")
+    parsed = urllib.parse.urlparse(origin)
+    bare = parsed.hostname.removeprefix("www.")
+    port = f":{parsed.port}" if parsed.port else ""
     report = {"origin": origin, "sections": {}}
     S = report["sections"]
 
     # 1. Host / protocol consolidation
     f = []
-    variants = [f"{s}://{h}/" for s in ("http", "https") for h in (bare, "www." + bare)]
+    is_ip = bool(re.fullmatch(r"[\d.]+|\[[0-9a-f:]+\]|localhost", bare))
+    hosts = (bare,) if is_ip else (bare, "www." + bare)
+    variants = [f"{s}://{h}{port}/" for s in ("http", "https") for h in hosts]
     with ThreadPoolExecutor(workers) as ex:
         results = list(ex.map(lambda u: fetch(u, max_bytes=200_000), variants))
     finals = {}
@@ -617,7 +644,7 @@ def check_site(start, sample=20, crawl=40, workers=8):
     elif distinct:
         canonical_origin = normalize_origin(next(iter(distinct)))
         f.append(("PASS", "hosts", f"All reachable variants consolidate to {canonical_origin}"))
-        if canonical_origin.startswith("http://"):
+        if canonical_origin.startswith("http://") and not is_ip:
             f.append(("FAIL", "https", "Site does not use HTTPS"))
         origin = canonical_origin
         report["origin"] = origin
@@ -652,7 +679,8 @@ def check_site(start, sample=20, crawl=40, workers=8):
 
     # 3. Sitemaps
     f = []
-    if not sitemap_urls:
+    declared = set(sitemap_urls)
+    if not sitemap_urls:  # guess common locations; stay quiet if a guess is wrong
         sitemap_urls = [origin + p for p in ("/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml")]
     urls, lastmods, seen_maps, queue, found = [], 0, set(), deque(sitemap_urls), []
     while queue and len(seen_maps) < 25 and len(urls) < 50_000:
@@ -662,15 +690,18 @@ def check_site(start, sample=20, crawl=40, workers=8):
         seen_maps.add(sm)
         r = fetch(sm, max_bytes=50_000_000)
         if r["status"] != 200 or not r["body"]:
+            if sm in declared:
+                f.append(("FAIL", "sitemap", f"Declared sitemap {sm} returns {r['status'] or r['error']}"))
             continue
         try:
             kind, entries = parse_sitemap(r["body"])
         except Exception:
-            if sm not in sitemap_urls[:1] or "sitemap" in sm:
-                f.append(("WARN", "sitemap", f"{sm} is not valid sitemap XML"))
+            if sm in declared:
+                f.append(("FAIL", "sitemap", f"{sm} is not valid sitemap XML"))
             continue
         found.append(sm)
         if kind == "index":
+            declared.update(loc for loc, _ in entries)
             queue.extend(loc for loc, _ in entries)
         else:
             urls.extend(loc for loc, _ in entries)
@@ -727,7 +758,8 @@ def check_site(start, sample=20, crawl=40, workers=8):
     dup_t = [t for t, n in titles.items() if n > 1]
     dup_d = [d for d, n in descs.items() if n > 1]
     if dup_t:
-        f.append(("WARN", "duplicates", f"{len(dup_t)} titles are shared by several sampled pages, e.g. \"{dup_t[0]}\""))
+        f.append(("WARN", "duplicates",
+                  f"{len(dup_t)} titles are shared by several sampled pages, e.g. \"{dup_t[0]}\""))
     if dup_d:
         f.append(("WARN", "duplicates", f"{len(dup_d)} meta descriptions are duplicated, e.g. \"{dup_d[0][:80]}\""))
     agg = Counter()
@@ -755,16 +787,22 @@ def check_site(start, sample=20, crawl=40, workers=8):
 
     # 6. Crawl for broken links, redirects, orphans
     f = []
-    seen, linked, sources = set(), set(), {}
+    seen, linked, sources, skipped = set(), set(), {}, set()
     queue = deque([origin + "/"])
     crawled = 0
+    allowed = lambda u: rp.can_fetch(UA, u)  # this crawler obeys robots.txt itself
     while queue and crawled < crawl:
         batch = []
         while queue and len(batch) < workers and crawled + len(batch) < crawl:
             u = queue.popleft()
-            if u not in seen:
-                seen.add(u)
+            key = u.rstrip("/")
+            if key in seen:
+                continue
+            seen.add(key)
+            if allowed(u):
                 batch.append(u)
+            else:
+                skipped.add(u)
         if not batch:
             break
         with ThreadPoolExecutor(workers) as ex:
@@ -782,29 +820,35 @@ def check_site(start, sample=20, crawl=40, workers=8):
                     continue
                 linked.add(link.rstrip("/"))
                 sources.setdefault(link, r["url"])
-                if link not in seen:
+                if link.rstrip("/") not in seen:
                     queue.append(link)
-    frontier_done = not queue
-    targets = [u for u in sources if u not in seen][:200] + [u for u in sources if u in seen][:200]
+    frontier_done = not any(u.rstrip("/") not in seen for u in queue)
+    fresh = [u for u in sources if u.rstrip("/") not in seen and allowed(u)]
+    targets = fresh[:200] + [u for u in sources if u.rstrip("/") in seen and allowed(u)][:200]
     with ThreadPoolExecutor(workers) as ex:
         checks = list(ex.map(lambda u: fetch(u, max_bytes=50_000), targets))
     broken = [(c["url"], c["status"] or c["error"]) for c in checks
               if c["error"] or (c["status"] or 0) >= 400]
-    redirected = [(c["url"], c["final_url"]) for c in checks if c["chain"] and not c["error"]]
+    redirected = [(c["url"], c["final_url"], c["chain"]) for c in checks if c["chain"] and not c["error"]]
     for u, st in broken[:25]:
         f.append(("FAIL", "broken-link", f"{u} -> {st} (linked from {sources.get(u)})"))
-    for u, dest in redirected[:15]:
+    for u, dest, chain in redirected[:15]:
         if dest.rstrip("/") == u.rstrip("/"):
             f.append(("WARN", "cookie-redirect", f"{u} redirects to itself to set a cookie (linked from "
                                                  f"{sources.get(u)}). Googlebot crawls without cookies - check it "
                                                  "renders in GSC URL Inspection, or noindex it if it is an app page"))
         else:
-            f.append(("WARN", "internal-redirect", f"Internal link {u} redirects to {dest} (linked from "
+            hops = " -> ".join(str(code) for _, code in chain)
+            kind = f"{len(chain)}-hop redirect chain ({hops})" if len(chain) > 1 else f"a {hops} redirect"
+            f.append(("WARN", "internal-redirect", f"Internal link {u} goes through {kind} to {dest} (linked from "
                                                    f"{sources.get(u)}) - link to the final URL"))
     if not broken:
         f.append(("PASS", "broken-link", f"No broken internal links among {len(targets)} checked"))
+    if skipped:
+        f.append(("INFO", "crawl", f"Skipped {len(skipped)} URLs disallowed by robots.txt"))
     f.append(("INFO", "crawl", f"Crawled {crawled} pages, found {len(sources)} unique internal links"
-                               + ("" if frontier_done else f" (stopped at --crawl {crawl}; raise it for full coverage)")))
+                               + ("" if frontier_done
+                                  else f" (stopped at --crawl {crawl}; raise it for full coverage)")))
     orphans = [u for u in urls if u.rstrip("/") not in linked and u.rstrip("/") != origin]
     if urls and orphans:
         lvl = "WARN" if frontier_done else "INFO"
@@ -882,10 +926,17 @@ def main(argv=None):
     sp.add_argument("--sample", type=int, default=20, help="sitemap URLs to inspect (default 20)")
     sp.add_argument("--crawl", type=int, default=40, help="pages to crawl for links (default 40)")
     sp.add_argument("--json", action="store_true")
+    sp.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
     for p in (pp, sp):
         p.add_argument("--insecure", action="store_true", help="skip TLS certificate verification")
+        p.add_argument("--delay", type=float, default=0.0,
+                       help="minimum seconds between requests (be gentle with small servers)")
+        p.add_argument("--fail-on", choices=["FAIL", "WARN"],
+                       help="exit 1 if any finding at this level (or worse) - for CI pipelines")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
     configure(args.insecure)
+    set_delay(args.delay)
 
     if args.cmd == "page":
         pages = []
@@ -905,14 +956,24 @@ def main(argv=None):
             print("# On-page SEO check\n")
             for pg in pages:
                 print(render_page(pg))
-        return 0
+        return exit_code([x for pg in pages for x in pg["findings"]], args.fail_on)
 
-    rep = check_site(args.url, sample=args.sample, crawl=args.crawl)
+    rep = check_site(args.url, sample=args.sample, crawl=args.crawl, workers=max(1, args.workers))
     for pg in rep.get("pages", []):
         pg.pop("_internal_urls", None)
     print(json.dumps(rep, indent=2, default=str) if args.json else render_site(rep))
-    return 0
+    return exit_code([x for fs in rep["sections"].values() for x in fs], args.fail_on)
+
+
+def exit_code(findings, fail_on):
+    if not fail_on:
+        return 0
+    bad = {"FAIL"} if fail_on == "FAIL" else {"FAIL", "WARN"}
+    return 1 if any(lvl in bad for lvl, _, _ in findings) else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

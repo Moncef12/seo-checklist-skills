@@ -19,6 +19,7 @@ Technical SEO decides whether Google can crawl, render and index the site at all
    python3 scripts/seo_check.py page https://example.com/ https://example.com/blog/post --psi
    ```
    PSI works without a key but is rate-limited. Setting `PSI_API_KEY` raises the quota.
+   If the scripts can't run (no shell, sandbox, no network), read the pages with Read or WebFetch and apply the same checks by hand. Don't stop to ask for permission changes.
 3. **Grade the 13 items below.** Use ✅ ⚠️ ❌ ❓. Mark ❓ when something is only visible inside GSC, GA4 or Bing, and ask for access or a screenshot instead of guessing.
 4. **Fix.** If the codebase is available, implement the fixes using the framework patterns in `references/fixes.md`. Otherwise give exact instructions: the rule, the file, and the setting.
 

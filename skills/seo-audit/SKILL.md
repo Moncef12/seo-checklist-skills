@@ -30,6 +30,8 @@ python3 scripts/gsc_analyze.py quick-wins ~/Downloads/example.com-Performance.zi
 - `site` covers hosts/HTTPS, robots.txt, sitemaps, indexability of a URL sample, soft 404s, broken links, internal redirects and orphan candidates.
 - `page --psi` covers titles, meta, headings, intro, images, schema, canonical, viewport, JS-rendering risk and Core Web Vitals.
 - If a fetch fails with a certificate error, rerun with `--insecure`. If the site blocks the script, fall back to WebFetch and your own reading of the HTML.
+- For local files (a static export or build output), pass the `.html` paths to `page`. There's no `site` mode for files, so check links between pages, orphans, noindex and duplicates yourself by reading them.
+- **If the scripts can't run at all** (no shell, sandbox, no network), keep going. Read the HTML with Read or WebFetch and apply the same checks by hand: title and meta lengths, H1 count and heading order, canonical, robots meta, viewport, alt attributes, JSON-LD, internal links. Scripts make the audit faster and more precise, but they aren't a prerequisite.
 - For the search-intent and competitor items, look at the live SERP. Use a SERP tool if connected (e.g. `serp_organic_live_advanced`), otherwise web search.
 
 ## 3. Grade every checklist item
