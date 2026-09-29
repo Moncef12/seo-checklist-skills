@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "seo-checklist",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The 40-point SEO checklist as Claude skills: full audits plus deep dives on technical SEO, on-page, content strategy, Search Console quick wins and link building. Includes dependency-free site/page checkers and a GSC analyzer.",
   "author": {
     "name": "Moncef Hassein-bey",

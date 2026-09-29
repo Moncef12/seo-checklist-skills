@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-09-29
+
+### Changed
+- The README now leads with how you actually use the skills: plain-language requests to Claude, the
+  skill that loads, and what comes back. The script reference moved into a collapsed developer section.
+- Added `examples/conversations/`, six unedited transcripts of real sessions (full audit, on-page
+  rewrite, Search Console quick wins, cannibalization, de-indexing, link building).
+- Raw checker outputs moved to `examples/under-the-hood/`.
+
 ## [1.0.0] - 2026-09-29
 
 ### Added
@@ -22,7 +31,7 @@ All notable changes to this project are documented here. The format follows
 - Fallback instructions so every skill still works when scripts can't run (Claude.ai without code
   execution, sandboxed paths, pasted data).
 - `examples/demo_site.py`, a fictional site with 10 planted SEO issues, used by the integration
-  tests and the sample reports, plus `examples/sample-audit-report.md`, a full audit produced end-to-end by the skill.
+  tests and the sample reports.
 - Offline unit and integration tests, a `claude plugin eval` suite (7 cases with and without the
   plugin, including a negative trigger case), CI on Python 3.9 to 3.13, and a release workflow
   that attaches one Claude.ai-ready zip per skill.
