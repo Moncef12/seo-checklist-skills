@@ -18,7 +18,7 @@ jobs:
       - name: Build one zip per skill (for Claude.ai upload) + full bundle
         run: |
           make package
-          (cd skills && zip -qr ../dist/seo-checklist-skills-all.zip . -x '*/__pycache__/*')
+          (cd skills && zip -qr ../dist/seo-checklist-skills-all.zip . -x 'seo/*' '*/__pycache__/*')
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

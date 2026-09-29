@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-29
+
+### Added
+- `/seo` command router (Claude Code). Running `/seo` shows the menu, `/seo <url>` runs a full audit,
+  and 15 modes (`audit`, `technical`, `page`, `rewrite`, `gsc`, `decliners`, `content`, `cannibal`,
+  `compare`, `links`, `local`, `schema`, `cwv`, `fix`, `ci`) dispatch to the six skills. It's
+  explicit-only (`disable-model-invocation`), so plain-language requests still auto-load the right skill.
+- `tests/test_router.py` keeps the menu, routing table, `argument-hint` and skill names consistent.
+
+### Changed
+- The README Usage section now starts with the `/seo` command reference.
+- Claude.ai zips exclude the router, since slash commands are a Claude Code feature.
+
 ## [1.0.1] - 2026-09-29
 
 ### Changed

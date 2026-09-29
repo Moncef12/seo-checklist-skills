@@ -40,8 +40,10 @@ demo:
 eval:
 	$(CLAUDE) plugin eval . --runs 3 -j 6 --allow-tools Bash Write --trust-plugin
 
-# One zip per skill for Claude.ai (Settings > Capabilities > Skills > Upload)
+# One zip per skill for Claude.ai (Settings > Capabilities > Skills > Upload).
+# The /seo router is a Claude Code slash command (uses argument-hint etc.), so it's plugin-only.
 package: sync
 	@rm -rf dist && mkdir -p dist
-	@cd skills && for s in */; do s=$${s%/}; zip -qr ../dist/$$s.zip $$s -x '*/__pycache__/*' '*.pyc' '.DS_Store'; done
+	@cd skills && for s in */; do s=$${s%/}; [ "$$s" = seo ] && continue; \
+		zip -qr ../dist/$$s.zip $$s -x '*/__pycache__/*' '*.pyc' '.DS_Store'; done
 	@ls -1 dist

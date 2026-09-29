@@ -11,11 +11,50 @@
 
 # SEO Checklist Skills for Claude
 
-The **40-point SEO checklist** as six Claude skills. You don't learn any commands. Just ask Claude about your site's SEO, and the right skill loads, checks the real site, and hands back a prioritized plan with paste-ready fixes. If your codebase is open, Claude can make the fixes too.
+The **40-point SEO checklist** as Claude skills. Type `/seo https://yoursite.com`, or just ask Claude about your site's SEO. It checks the real site, grades every checklist item honestly, and hands back a prioritized plan with paste-ready fixes. If your codebase is open, Claude can make the fixes too.
 
 Works in **Claude Code** (plugin) and **Claude.ai / Claude Desktop** (uploaded skills).
 
-## Just ask
+## Usage
+
+In Claude Code, everything goes through one command router, `/seo`:
+
+```text
+/seo                           → Show all available commands
+/seo {url}                     → AUTO: full 40-point audit + prioritized report
+/seo audit {url}               → Full audit: technical, on-page, content, quick wins, links
+/seo technical {url}           → Crawl, indexing, sitemaps, canonicals, redirects, schema
+/seo page {url|file} [keyword] → On-page review of one page + rewrites
+/seo rewrite {url|file} {kw}   → Title, meta, H1 and intro rewrites only (exact char counts)
+/seo gsc {export.zip}          → Search Console quick wins: low CTR, page 2, questions
+/seo decliners {compare.zip}   → Pages losing traffic: diagnosis + refresh plan
+/seo content {domain|topic}    → Content plan: competitor gaps, low-KD keywords, clusters
+/seo cannibal {data|keyword}   → Pages competing for one keyword → merge/redirect plan
+/seo compare {competitor}      → "X vs Y", alternatives and "best X" page briefs
+/seo links {domain}            → Link plan: mentions, backlink gap, "best X" lists, Reddit
+/seo local {business}          → Google Business Profile + local schema
+/seo schema {url|file}         → Ready-to-paste JSON-LD for a page
+/seo cwv {url}                 → Core Web Vitals diagnosis + stack-specific fixes
+/seo fix                       → Apply the audit's fixes in your codebase
+/seo ci {url}                  → Add the SEO checker as a CI gate (fails on regressions)
+```
+
+**Or just ask in plain words.** The six skills load on their own when your request matches:
+
+```text
+Why isn't my new blog post showing up in Google? It's been 3 weeks.
+Here's my Search Console export. What should I fix first?
+Our organic clicks dropped 30% last month. Here's the compare export - what happened?
+Plan a topic cluster around "freelance invoicing" and tell me which pages to write first.
+```
+
+Give Claude whatever you have: a URL, a Search Console `.zip`, pasted HTML, a file in your repo, or the whole codebase. After an audit, `/seo fix` (or "fix the issues you found") edits titles, canonicals, sitemaps and schema through your framework (Next.js, Nuxt, Astro, SvelteKit, WordPress).
+
+- If a keyword or SERP tool is connected as an MCP server (DataForSEO, Ahrefs, Semrush), the skills use it for volumes, keyword difficulty, competitors and "People also ask". Without one, they say what's unknown instead of inventing numbers.
+- Anything Claude can't verify from outside, like your GSC setup or backlink profile, is marked ❓ with the exact data needed to settle it.
+- In Claude.ai and Claude Desktop, there are no slash commands. Just ask, and the skills load the same way.
+
+## See it in action
 
 > **You:** Can you make this page rank better for "invoice software for freelancers"? *(pastes the page's HTML)*
 
@@ -34,7 +73,7 @@ Works in **Claude Code** (plugin) and **Claude.ai / Claude Desktop** (uploaded s
 >
 > *…followed by meta descriptions, a new H1 and intro, paste-ready HTML and internal links to add.* **[Full conversation →](examples/conversations/02-on-page-rewrite.md)**
 
-### More real conversations
+### Real conversations
 
 These are unedited transcripts recorded with the plugin installed. "Acme Invoice" is a fictional demo company.
 
@@ -47,11 +86,12 @@ These are unedited transcripts recorded with the plugin installed. "Acme Invoice
 | ["I blocked /old-blog/ in robots.txt but the posts are still in Google."](examples/conversations/05-technical-deindex.md) | `seo-technical` | Why it happens, Next.js code for noindex, 410 or 301, and why FAQ schema won't get the dropdowns |
 | ["Should I buy 500 backlinks on Fiverr and make some Reddit accounts?"](examples/conversations/06-link-building.md) | `seo-links` | The real risks, then a concrete link plan: directories, "best X" lists, backlink gap, open Reddit participation |
 
-## The six skills
+## Skills
 
 | Skill | Covers | Loads when you say things like |
 |---|---|---|
-| **seo-audit** | All 40 items in one prioritized report | "audit my SEO", "why am I not ranking?", "get this site SEO-ready" |
+| **seo** *(router)* | The `/seo` command menu. It dispatches each mode to the skills below. | Only when you type `/seo …` |
+| **seo-audit** | All 40 checklist items in one prioritized report | "audit my SEO", "why am I not ranking?", "get this site SEO-ready" |
 | **seo-technical** | GSC/GA4 · sitemaps · indexing · robots/noindex · canonicals · Core Web Vitals · mobile · JS crawlability · broken links/redirects · clean URLs · breadcrumbs · orphans · schema | "pages aren't indexed", "fix my sitemap", "canonical issues", "PageSpeed is bad" |
 | **seo-on-page** | Search intent · titles 50-60 chars · unique meta descriptions · headings · answer in the first 2 lines · images/alt · internal links | "make this page rank", "rewrite my title and meta", "is this post optimized?" |
 | **seo-content** | Competitor keywords · high-volume/low-KD · cannibalization · merge thin pages · topic clusters · feature & use-case pages · comparisons/alternatives · listicles · E-E-A-T · dateModified | "what should we write?", "keyword research", "two pages compete", "plan an alternatives page" |
@@ -65,48 +105,19 @@ These are unedited transcripts recorded with the plugin installed. "Acme Invoice
 /plugin marketplace add Moncef12/seo-checklist-skills
 /plugin install seo-checklist@seo-checklist-skills
 ```
+Then type `/seo` to see the commands. If another plugin also defines `/seo`, use `/seo-checklist:seo`.
 
 **Claude.ai / Claude Desktop:** download the skill zips from the [latest release](https://github.com/Moncef12/seo-checklist-skills/releases/latest), then upload them in **Settings > Capabilities > Skills**.
 
-## Using it
-
-Describe what you want in plain words and give Claude whatever you have:
-
-- **A URL.** "Audit https://example.com. The pages that matter are /pricing and /blog."
-- **A Search Console export.** Drop in the `.zip` from Performance > Export and ask "what should I fix first?"
-- **A page.** Paste the HTML or text, or point to the file: "optimize `app/blog/[slug]/page.tsx` for *invoice software*".
-- **Your codebase.** After an audit, say "fix the issues you found". Claude edits titles, canonicals, sitemaps and schema through your framework (Next.js, Nuxt, Astro, SvelteKit, WordPress).
-
-A few more prompts to try:
-
-```text
-Why isn't my new blog post showing up in Google? It's been 3 weeks.
-Plan a topic cluster around "freelance invoicing" and tell me which pages to write first.
-Write a fair "Acme vs FreshBooks" comparison page brief.
-Our organic clicks dropped 30% last month. Here's the compare export - what happened?
-Find link opportunities: who links to Linear and Height but not to us?
-```
-
-**Tips**
-- To run a skill by name, type `/seo-checklist:seo-audit https://example.com` (or any other skill name).
-- If a keyword or SERP tool is connected as an MCP server (DataForSEO, Ahrefs, Semrush), the skills use it for search volumes, keyword difficulty, competitors and "People also ask". Without one, they say what's unknown instead of making up numbers.
-- Claude marks anything it can't verify from outside, like your GSC setup or backlink profile, as ❓ and tells you exactly what data would settle it.
-
 ### Try it on the demo site
 
-The repo includes a small fictional site with 10 planted SEO problems. Start it with `make demo`, then ask Claude Code:
-
-```text
-Audit the SEO of http://127.0.0.1:8799
-```
-
-Compare what you get with the [recorded audit](examples/conversations/01-full-site-audit.md).
+The repo includes a small fictional site with 10 planted SEO problems. Start it with `make demo`, then run `/seo http://127.0.0.1:8799` in Claude Code. Compare the result with the [recorded audit](examples/conversations/01-full-site-audit.md).
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    U["You ask in plain words<br/>URL · GSC export · page · codebase"] --> A["Claude picks the skill<br/>seo-audit · seo-technical · seo-on-page<br/>seo-content · seo-quick-wins · seo-links"]
+    U["/seo mode target<br/>or a plain-language request"] --> A["Router or auto-trigger picks the skill<br/>seo-audit · seo-technical · seo-on-page<br/>seo-content · seo-quick-wins · seo-links"]
     A -->|runs bundled checkers| S["Crawl & page checks<br/>Search Console analysis<br/>exact character counts"]
     A -.->|optional MCP| K["Keyword / SERP data"]
     S & K --> G["Grades checklist items<br/>✅ ⚠️ ❌ ❓"]
@@ -119,7 +130,7 @@ Each skill pairs Claude's judgment (search intent, priorities, rewrites) with sm
 ## Quality
 
 - **Behavioral evals:** 7 realistic requests, each run 3× with and without the plugin and graded by an LLM judge. The plugin scores **0.93 against 0.86** for the baseline, with the biggest gains on rewrites (+0.33) and consolidation plans (+0.17). The right skill loaded in **18/18** SEO requests and in **0/3** runs of a Google Ads near-miss. Details and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
-- **22 offline tests,** including an end-to-end run against the demo site, on Python 3.9, 3.11 and 3.13 in CI. Also `claude plugin validate --strict` and lint.
+- **26 offline tests,** including an end-to-end run against the demo site, on Python 3.9, 3.11 and 3.13 in CI. Also `claude plugin validate --strict` and lint.
 
 <details>
 <summary><b>For developers: the bundled checkers, CI usage, project layout</b></summary>
