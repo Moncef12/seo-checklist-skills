@@ -1,0 +1,15 @@
+---
+max_turns: 12
+allowed_tools: [Read, Glob, Grep, Skill]
+---
+
+here's my search console queries export for the last 3 months, what should I fix first?
+
+| Top queries | Clicks | Impressions | CTR | Position |
+|---|---|---|---|---|
+| invoice software | 40 | 12000 | 0.33% | 4.2 |
+| free invoice template | 900 | 10000 | 9% | 2.1 |
+| how to write an invoice | 30 | 5000 | 0.6% | 13.4 |
+| invoice app for freelancers | 120 | 1500 | 8% | 3.5 |
+| what is a pro forma invoice | 5 | 800 | 0.63% | 16.8 |
+| payly login | 300 | 400 | 75% | 1.0 |

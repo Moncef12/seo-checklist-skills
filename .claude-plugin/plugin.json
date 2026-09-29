@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "seo-checklist",
+  "version": "0.1.0",
+  "description": "The 40-point SEO checklist as Claude skills: full audits plus deep dives on technical SEO, on-page, content strategy, Search Console quick wins and link building. Includes dependency-free site/page checkers and a GSC analyzer.",
+  "author": {
+    "name": "Moncef Hassein-bey",
+    "url": "https://github.com/Moncef12"
+  },
+  "repository": "https://github.com/Moncef12/seo-checklist-skills",
+  "license": "MIT",
+  "keywords": ["seo", "audit", "technical-seo", "search-console", "content-strategy", "link-building", "core-web-vitals", "schema"],
+  "skills": ["./skills/"]
+}
