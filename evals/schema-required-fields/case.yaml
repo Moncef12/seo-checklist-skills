@@ -3,12 +3,12 @@ name: schema-required-fields
 description: Valid JSON-LD that still won't earn rich results (T13). Must name the missing required properties per type.
 tags: [seo-technical, scripted]
 context:
-  add_dirs: ["pages"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 20
   allowed_tools: [Read, Glob, Grep, Skill, Bash]
   prompt: |
-    We added structured data to six templates (the `pages` folder in your additional working directories). The
+    We added structured data to six templates (the `pages` folder in the current directory). The
     JSON-LD validates as JSON. Will each one get its rich result in Google? Tell me exactly what's missing or wrong
     per page, briefly.
 graders:

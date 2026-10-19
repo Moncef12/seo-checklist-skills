@@ -3,14 +3,14 @@ name: audit-static-site
 description: Full audit of a small site from its static HTML export; must find planted issues and be honest about what can't be verified.
 tags: [seo-audit, scripted]
 context:
-  add_dirs: ["acme-site"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 40
   timeout_seconds: 600
   allowed_tools: [Read, Glob, Grep, Skill, Bash, Write]
   prompt: |
     Can you do a full SEO audit of my invoicing SaaS before we launch? It isn't deployed yet, but the static
-    HTML export is in the `acme-site` folder in your additional working directories (index.html is the
+    HTML export is in the `acme-site` folder in the current directory (index.html is the
     homepage; file names map to URLs, e.g. blog__how-to-write-an-invoice.html is /blog/how-to-write-an-invoice).
     Production domain will be https://acme-invoice.example. I haven't set up Search Console or analytics yet.
     Give me the report right here in chat.

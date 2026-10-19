@@ -3,13 +3,13 @@ name: setup-detection
 description: T1/T2 from the homepage HTML. Must read GTM vs GA4, a legacy UA tag, and the verification method honestly.
 tags: [seo-technical, scripted]
 context:
-  add_dirs: ["site"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 15
   allowed_tools: [Read, Glob, Grep, Skill, Bash]
   prompt: |
-    Is our Google Analytics 4, Search Console and Bing setup done? Our homepage HTML is site/homepage.html in your
-    additional working directories. The developer told us "GA4 is installed". Keep it short.
+    Is our Google Analytics 4, Search Console and Bing setup done? Our homepage HTML is site/homepage.html in the current
+    directory. The developer told us "GA4 is installed". Keep it short.
 graders:
   - name: gtm-not-proof-of-ga4
     type: llm

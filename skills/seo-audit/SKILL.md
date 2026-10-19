@@ -1,6 +1,6 @@
 ---
 name: seo-audit
-description: Runs a full SEO audit of a website against a 40-point checklist (technical, on-page, content, quick wins, links) and turns it into a prioritized action plan. Use whenever someone wants their site's SEO checked or improved as a whole - "audit my SEO", "SEO health check", "why am I not ranking", "what should I fix for Google", "get this site SEO-ready before launch", "run the SEO checklist on example.com" - even if they don't say "audit". For one area only, the sibling skills seo-technical, seo-on-page, seo-content, seo-quick-wins and seo-links go deeper.
+description: Runs a full SEO audit of a website against a 40-point checklist (technical, on-page, content, quick wins, links) and turns it into a prioritized action plan. Use whenever someone wants their site's SEO checked or improved as a whole - "audit my SEO", "SEO health check", "why am I not ranking", "what should I fix for Google", "get this site SEO-ready before launch", "run the SEO checklist on example.com" - even if they don't say "audit". Also use it to start or update a checklist progress file (SEO-CHECKLIST.md) from new check results, or when asked what improved or regressed since the last SEO check. For one area only, the sibling skills seo-technical, seo-on-page, seo-content, seo-quick-wins and seo-links go deeper.
 ---
 
 # SEO audit

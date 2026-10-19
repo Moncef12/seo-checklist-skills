@@ -3,14 +3,14 @@ name: title-keyword-gaps
 description: "The site: check (Q2) with data. Titles must be judged against each page's top query and by pixel width, not just character count."
 tags: [seo-quick-wins, scripted, hard]
 context:
-  add_dirs: ["site", "gsc"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 30
   timeout_seconds: 600
   allowed_tools: [Read, Glob, Grep, Skill, Bash]
   prompt: |
     Can you do the "site:" check on our titles with real data? I exported query + page rows from Search Console
-    (gsc/query_page.csv in your additional working directories) and the static build of the site is in the
+    (gsc/query_page.csv in the current directory) and the static build of the site is in the
     `site` folder (site/index.html is /, site/pricing.html is /pricing, site/blog/index.html is /blog/, and so
     on). Our domain is https://getpayly.example. Which titles are cut off in Google or miss the keyword people
     actually search for, which ones are fine, and what should the bad ones say instead? Answer in chat.

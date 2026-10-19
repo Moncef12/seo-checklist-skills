@@ -3,14 +3,14 @@ name: near-duplicate-pages
 description: Find near-duplicate pages in a 22-page static export (C4), including a city-swap doorway pair, and respect an existing canonical.
 tags: [seo-content, scripted, hard]
 context:
-  add_dirs: ["site"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 35
   timeout_seconds: 600
   allowed_tools: [Read, Glob, Grep, Skill, Bash]
   prompt: |
-    We're pruning our site before a redesign. The static export of every page is in the `site` folder in your
-    additional working directories (file names map to URLs: locations__austin.html is /locations/austin,
+    We're pruning our site before a redesign. The static export of every page is in the `site` folder in the current
+    directory (file names map to URLs: locations__austin.html is /locations/austin,
     index.html is /). Domain: https://payly.example. Which pages duplicate or nearly duplicate each other, and
     what exactly should we merge, redirect or rewrite? Give me the plan right here.
 graders:

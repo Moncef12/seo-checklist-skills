@@ -3,13 +3,13 @@ name: checklist-tracker
 description: Update a living SEO-CHECKLIST.md from today's check output and report what changed since the last run.
 tags: [seo-audit, scripted, files]
 context:
-  add_dirs: ["project"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 25
   timeout_seconds: 600
   allowed_tools: [Read, Glob, Grep, Skill, Bash, Write]
   prompt: |
-    We track our SEO checklist in project/SEO-CHECKLIST.md (in your additional working directories). Today's
+    We track our SEO checklist in project/SEO-CHECKLIST.md (in the current directory). Today's
     technical check output is project/todays-check.md. Update the checklist with today's results, keeping the items
     today's check didn't cover, and write the updated file to SEO-CHECKLIST.md in your current working directory.
     Then tell me in a few lines what improved, what got worse, and what to fix next.
@@ -22,10 +22,11 @@ graders:
     focus: {source: file, path: SEO-CHECKLIST.md}
     criteria: |
       The file is a complete SEO checklist with all 40 items (IDs T1-T13, Q1-Q5, O1-O7, C1-C10, L1-L5) grouped by
-      section, each with a status. Compared with the previous run it shows: canonical tags (T5) now passing, broken
-      links (T9) now passing (no broken internal links), unique meta descriptions (O3) now passing, titles (O2)
-      still failing, and GA4 / Search Console (T1) now at least partly confirmed (GA4 tag and DNS verification
-      found). Items today's check didn't cover keep their previous status (e.g. L5 stays not applicable).
+      section, each with a status. Compared with the previous run it shows: canonical tags (T5) now passing,
+      unique meta descriptions (O3) now passing, titles (O2) still failing, GA4 / Search Console (T1) improved
+      from unknown (passing or partly confirmed), and the broken internal links fixed (T9 passing, or still
+      failing only because of the new soft 404). Items today's check didn't cover keep their previous status
+      (e.g. L5 stays not applicable). Judge the content, not the exact wording or layout.
   - name: regression-reported
     type: llm
     criteria: |

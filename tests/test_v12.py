@@ -74,8 +74,9 @@ class SetupDetection(unittest.TestCase):
 
 
 def _text(seed, n=120):
-    vocab = ("invoice client payment freelance project hour rate tax receipt reminder due bank card late fee "
-             "template report expense budget agency contract scope milestone deposit refund currency").split()
+    words = ("invoice client payment freelance project hour rate tax receipt reminder due bank card late fee "
+             "template report expense budget agency contract scope milestone deposit refund currency")
+    vocab = words.split()
     x, out = seed, []
     for _ in range(n):
         x = (x * 1103515245 + 12345) % (1 << 31)

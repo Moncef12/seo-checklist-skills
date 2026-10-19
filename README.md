@@ -178,7 +178,7 @@ Each skill pairs Claude's judgment (search intent, priorities, rewrites) with sm
 
 ## Quality
 
-- **Behavioral evals:** 12 realistic requests, each run 3× with and without the plugin and graded by an LLM judge. v1.2 adds 5 cases built so plain Claude is likely to miss what the scripts catch: a title cut off by pixel width at 56 characters, a city-swap doorway pair among 22 pages, a canonical that must be respected, schema that is valid JSON but not eligible, and a tracker update. Scores, triggering and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
+- **Behavioral evals:** 12 realistic requests, each run 3× with and without the plugin and graded by a Sonnet judge. The plugin scores **0.93 against 0.71** for the baseline (+0.23) and never scores lower. It lifted 8 of 12 cases, with the biggest gains on rewrites (+1.00), full audits, link plans and de-indexing (+0.33 each). The right skill loaded in **33/33** SEO runs and **0/3** times on a Google Ads near-miss. v1.2 adds 5 harder cases, such as a title cut off by pixel width at 56 characters and a city-swap doorway pair among 22 pages. Details and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
 - **48 offline tests,** including an end-to-end run against the demo site and a stress test of the duplicate detection, on Python 3.9, 3.11 and 3.13 in CI. CI also runs the GitHub Action itself against the demo site, `claude plugin validate --strict` and lint.
 - **Tested on live production sites** (Next.js on Vercel and Netlify). Those runs caught three bugs before release: GA4 tags loaded from JavaScript bundles, a crawl that followed an off-site redirect, and over-eager repeated-paragraph warnings.
 

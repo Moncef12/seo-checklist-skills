@@ -37,9 +37,10 @@ validate:
 demo:
 	python3 examples/demo_site.py --port 8799
 
-# Behavioral evals, with vs. without the plugin (uses your Claude credentials; ~$5-10)
+# Behavioral evals, with vs. without the plugin (uses your Claude credentials; ~$15-20).
+# --scaffold copies each case's fixtures into the run's working directory so the scripts can read them.
 eval:
-	$(CLAUDE) plugin eval . --runs 3 -j 6 --allow-tools Bash Write --trust-plugin
+	$(CLAUDE) plugin eval . --runs 3 -j 6 --allow-tools Bash Write --trust-plugin --scaffold --judge-model sonnet
 
 # One zip per skill for Claude.ai (Settings > Capabilities > Skills > Upload).
 # The /seo router is a Claude Code slash command (uses argument-hint etc.), so it's plugin-only.

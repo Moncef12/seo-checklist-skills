@@ -239,9 +239,10 @@ def cannibalization(rows, min_share):
     return {"cannibalized": out}
 
 
-STOPWORDS = set("""a an the and or of for to in on at by with from is are be my your our how what why when
+_STOPWORDS_TEXT = """a an the and or of for to in on at by with from is are be my your our how what why when
 where which who can do does vs versus near me de la le les des du un une et pour en sur avec der die das und
-für mit von zu el los las del y para con por que""".split())
+für mit von zu el los las del y para con por que"""
+STOPWORDS = set(_STOPWORDS_TEXT.split())
 TITLE_PX = 600
 
 
