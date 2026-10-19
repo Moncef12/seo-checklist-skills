@@ -1,0 +1,49 @@
+schema_version: "1.0"
+name: near-duplicate-pages
+description: Find near-duplicate pages in a 22-page static export (C4), including a city-swap doorway pair, and respect an existing canonical.
+tags: [seo-content, scripted, hard]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 35
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    We're pruning our site before a redesign. The static export of every page is in the `site` folder in the current
+    directory (file names map to URLs: locations__austin.html is /locations/austin,
+    index.html is /). Domain: https://payly.example. Which pages duplicate or nearly duplicate each other, and
+    what exactly should we merge, redirect or rewrite? Give me the plan right here.
+graders:
+  - name: finds-city-doorway-pair
+    type: llm
+    criteria: |
+      The response identifies /locations/austin and /locations/round-rock as near-duplicates of each other (the
+      same text with the city and landmark names swapped).
+  - name: finds-rewritten-guide-pair
+    type: llm
+    criteria: |
+      The response identifies /blog/invoice-numbering-guide and /blog/how-to-number-invoices as near-duplicates
+      (one is a light rewrite of the other) and recommends keeping one and redirecting or merging the other.
+  - name: finds-feature-pair
+    type: llm
+    criteria: |
+      The response identifies /features/recurring-invoices and /features/subscription-billing as near-duplicates.
+  - name: respects-existing-canonical
+    type: llm
+    criteria: |
+      The response does NOT present /pricing-2024 vs /pricing as a new problem that still needs fixing: it either
+      notes that /pricing-2024 already declares /pricing as its canonical (so it's already consolidated, at most
+      suggesting an optional 301), or doesn't list it among the duplicates to fix. Recommending to "add a
+      canonical" there fails, because the canonical already exists.
+  - name: no-false-merges-and-a-plan
+    type: llm
+    criteria: |
+      The response does not recommend merging distinct feature pages such as /features/expense-tracking,
+      /features/time-tracking or /features/bank-sync with each other, and it gives a concrete plan (e.g. a table or
+      list) mapping each page to drop onto the page that stays, with a 301 redirect.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

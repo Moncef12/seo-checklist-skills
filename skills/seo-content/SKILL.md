@@ -28,7 +28,12 @@ python3 scripts/gsc_analyze.py cannibalization query_page.csv
 ```
 This needs query+page rows from the GSC API, Search Analytics for Sheets, or Looker Studio, because the plain GSC UI export doesn't pair them. Without that data, search `site:domain.com "keyword"` for each money keyword. Fix it by choosing one owner URL per intent, then either merge (C4), differentiate the intent, or re-point internal links and anchors to the owner. Two pages that serve different intents for similar words (e.g. "CRM pricing" vs "best CRM") are not cannibalization.
 
-**C4. Merge thin or overlapping pages.** Candidates are pages under ~300 words with no unique value, several posts on the same subtopic, and pages with impressions but near-zero clicks for months. The process:
+**C4. Merge thin or overlapping pages.** Candidates are pages under ~300 words with no unique value, several posts on the same subtopic, and pages with impressions but near-zero clicks for months. Find them with data first:
+```bash
+python3 scripts/seo_check.py site https://example.com --crawl 300     # "Duplicate content" section
+python3 scripts/seo_check.py page out/a.html out/b.html out/c.html     # a static build: compares the files
+```
+It reports near-duplicate pairs (share of identical 5-word sequences, ignoring nav and footer), the same paragraph pasted on several pages, and thin pages by their own word count. Pages that already point to each other with rel=canonical are left out. Then judge each pair: same intent → merge; different intents → rewrite one so it stands alone. The process:
 1. Pick the strongest URL (most traffic or backlinks).
 2. Fold the unique content in.
 3. 301 the others to it.

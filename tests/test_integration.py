@@ -15,7 +15,7 @@ class SiteCheckAgainstDemo(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.server, cls.base = demo_site.serve(port=0)
-        cls.report = seo_check.check_site(cls.base, sample=20, crawl=50, workers=4)
+        cls.report = seo_check.check_site(cls.base, sample=20, crawl=50, workers=4, dns=False, images=True)
         cls.findings = [(lvl, check, msg) for fs in cls.report["sections"].values() for lvl, check, msg in fs]
 
     @classmethod
@@ -54,6 +54,38 @@ class SiteCheckAgainstDemo(unittest.TestCase):
         checks = {(l, c) for l, c, _ in pricing["findings"]}
         for expected in (("WARN", "title"), ("WARN", "meta-description"), ("WARN", "canonical"), ("WARN", "h1")):
             self.assertIn(expected, checks)
+
+    def test_sections_in_reading_order(self):
+        names = list(self.report["sections"])
+        self.assertEqual(names[:2], ["Hosts & HTTPS", "Search engine setup"])
+        self.assertLess(names.index("Duplicate content"), names.index("Links & orphans"))
+
+    def test_setup_without_analytics(self):
+        self.assertTrue(self.has("WARN", "analytics", "No GA4"))
+        self.assertTrue(self.has("INFO", "gsc-verification"))
+        self.assertTrue(self.has("INFO", "bing-verification"))
+
+    def test_duplicate_content(self):
+        self.assertTrue(self.has("WARN", "near-duplicate", "/orphan-landing"))
+        self.assertTrue(self.has("WARN", "repeated-block", "Freelancers lose hours"))
+        self.assertTrue(self.has("INFO", "thin-content", "/blog/invoice-template-guide"))
+        dup = self.report["sections"]["Duplicate content"]
+        self.assertFalse(any("/legacy" in m for _, _, m in dup))  # noindex pages are left out
+
+    def test_schema_and_image_weight_on_sampled_pages(self):
+        def page_findings(path):
+            return next(p for p in self.report["pages"] if p["url"].rstrip("/").endswith(path))["findings"]
+        self.assertTrue(any(l == "WARN" and c == "schema" and "BreadcrumbList" in m
+                            for l, c, m in page_findings("/features/invoicing")))
+        self.assertTrue(any(l == "WARN" and c == "img-weight" and "hero.png" in m
+                            for l, c, m in page_findings(self.base)))
+
+    def test_crawl_stays_on_site(self):
+        self.assertTrue(self.has("INFO", "crawl", "redirect to another site"))
+        self.assertTrue(self.has("INFO", "offsite-redirect", "/partner"))
+        dup = " ".join(m for _, _, m in self.report["sections"]["Duplicate content"])
+        self.assertNotIn("localhost", dup)
+        self.assertFalse(any("localhost" in p["final_url"] for p in self.report["pages"]))
 
     def test_fail_on_exit_code(self):
         self.assertEqual(seo_check.exit_code(self.findings, "FAIL"), 1)

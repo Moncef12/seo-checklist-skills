@@ -1,7 +1,7 @@
 ---
 name: seo
-description: Command router for the SEO checklist skills. Invoked explicitly as /seo with a mode (audit, technical, page, rewrite, gsc, decliners, content, cannibal, compare, links, local, schema, cwv, fix, ci) or with just a URL for a full audit. With no argument it shows the command menu.
-argument-hint: "[URL | audit | technical | page | rewrite | gsc | decliners | content | cannibal | compare | links | local | schema | cwv | fix | ci] [target]"
+description: Command router for the SEO checklist skills. Invoked explicitly as /seo with a mode (audit, technical, page, rewrite, gsc, titles, decliners, content, cannibal, dupes, compare, links, local, schema, cwv, report, checklist, fix, ci) or with just a URL for a full audit. With no argument it shows the command menu.
+argument-hint: "[URL | audit | technical | page | rewrite | gsc | titles | decliners | content | cannibal | dupes | compare | links | local | schema | cwv | report | checklist | fix | ci] [target]"
 disable-model-invocation: true
 ---
 
@@ -24,16 +24,20 @@ This router only dispatches. The detailed know-how lives in the six sibling skil
 | `page <url\|file> [keyword]` | on-page review | `seo-on-page` → all 7 items + rewrites |
 | `rewrite <url\|file\|text> <keyword>` | rewrites only | `seo-on-page` → O2, O3, O4, O5: title, meta, H1 and first two lines, 2-3 options each, counts verified with `lengths.py` |
 | `gsc <export.zip\|csv>` | quick wins | `seo-quick-wins` → Q1-Q4 |
+| `titles <query_page.csv\|export.zip> [site or build folder]` | title check | `seo-quick-wins` → Q2 with `gsc_analyze.py titles`: live titles against each page's top query, cut-off at ~600 px |
 | `decliners <compare-export>` | traffic losses | `seo-quick-wins` → Q5 diagnosis + refresh plan |
 | `content <domain\|topic>` | content plan | `seo-content` → C1, C2, C5, C6: gaps, winnable keywords, clusters, priorities |
 | `cannibal <query_page.csv\|domain\|keyword>` | cannibalization | `seo-content` → C3, C4: owner URL + merge/redirect table |
+| `dupes <url\|files>` | duplicate content | `seo-content` → C4: the `site` crawl's "Duplicate content" section (or `page` with several files), then a merge/rewrite plan |
 | `compare <competitor>` | comparison pages | `seo-content` → C7, C8: "X vs Y", alternatives and listicle briefs |
 | `links <domain>` | link plan | `seo-links` → L1-L4 |
 | `local <business or url>` | local SEO | `seo-links` → L5 Google Business Profile, plus `LocalBusiness` schema |
 | `schema <url\|file>` | structured data | `seo-technical` → T11, T13 + `references/fixes.md#structured-data`: ready-to-paste JSON-LD |
 | `cwv <url>` | Core Web Vitals | `seo-technical` → T6: `seo_check.py page --psi`, fixes by metric and stack |
+| `report <url>` | HTML report | `seo-technical`: run `seo_check.py site <url> --html seo-report.html`, tell the user where the file is, and summarize the top issues |
+| `checklist [url]` | progress tracker | `seo-audit` → step 7: grade the 40 items (reuse this conversation's audit if there is one) and write or update `SEO-CHECKLIST.md` with `checklist.py` |
 | `fix` | apply fixes | `seo-audit` → step 6: fix the findings from this conversation's audit in the open codebase. If no audit has run yet, ask for the URL and run `technical` first. |
-| `ci <url>` | CI gate | `seo-technical`: add `seo_check.py site <url> --fail-on FAIL` to the project's CI (GitHub Actions, GitLab, etc.) |
+| `ci <url>` | CI gate | `seo-technical` → "CI gate": add the GitHub Action (`uses: Moncef12/seo-checklist-skills@v1.2.0`) or `seo_check.py site <url> --fail-on FAIL` to the project's CI |
 | `help` | menu | Show the menu |
 
 **Unrecognized first word:**
@@ -56,14 +60,18 @@ SEO Checklist: commands
 /seo page <url|file> [kw]      → On-page review of one page + rewrites
 /seo rewrite <url|file> <kw>   → Title, meta, H1 and intro rewrites only (exact char counts)
 /seo gsc <export.zip>          → Search Console quick wins: low CTR, page 2, questions
+/seo titles <query_page.csv>   → Titles that miss their top query or get cut off
 /seo decliners <compare.zip>   → Pages losing traffic: diagnosis + refresh plan
 /seo content <domain|topic>    → Content plan: competitor gaps, low-KD keywords, clusters
 /seo cannibal <data|keyword>   → Pages competing for one keyword → merge/redirect plan
+/seo dupes <url|files>         → Near-duplicate pages and repeated paragraphs
 /seo compare <competitor>      → "X vs Y", alternatives and "best X" page briefs
 /seo links <domain>            → Link plan: mentions, backlink gap, lists, Reddit
 /seo local <business>          → Google Business Profile + local schema
 /seo schema <url|file>         → Ready-to-paste JSON-LD for a page
 /seo cwv <url>                 → Core Web Vitals diagnosis + stack-specific fixes
+/seo report <url>              → Styled HTML report of the technical check
+/seo checklist [url]           → Track the 40 items in SEO-CHECKLIST.md, run after run
 /seo fix                       → Apply the audit's fixes in your codebase
 /seo ci <url>                  → Add the SEO checker as a CI gate
 

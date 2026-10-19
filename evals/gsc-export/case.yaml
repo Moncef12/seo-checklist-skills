@@ -3,13 +3,13 @@ name: gsc-export
 description: Analyze a raw Search Console zip export and prioritize quick wins.
 tags: [seo-quick-wins, scripted]
 context:
-  add_dirs: ["gsc-data"]
+  scaffold_script: scaffold.sh
 execution:
   max_turns: 20
   allowed_tools: [Read, Glob, Grep, Skill, Bash]
   prompt: |
     I exported my Search Console performance data (last 3 months) - Queries.csv and Pages.csv are in the
-    gsc-data folder in your additional working directories. What should I fix first to get more traffic? Also I want to know which
+    gsc-data folder in the current directory. What should I fix first to get more traffic? Also I want to know which
     pages are losing traffic.
 graders:
   - name: quick-wins-found
@@ -29,7 +29,7 @@ graders:
     type: llm
     criteria: |
       Any estimate of extra clicks is presented as rough / directional (not a guarantee), and the response
-      ends in a clear prioritized action list.
+      includes a clear prioritized action list (at the top or at the end).
   - name: skill-fired
     type: tool_used
     tool: Skill

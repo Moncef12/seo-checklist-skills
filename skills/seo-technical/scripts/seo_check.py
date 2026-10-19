@@ -2,21 +2,27 @@
 """
 seo_check.py - dependency-free SEO checks used by the seo-checklist skills.
 
-  python3 seo_check.py page URL_OR_FILE [URL_OR_FILE ...] [--psi] [--json]
-  python3 seo_check.py site https://example.com [--sample 20] [--crawl 40] [--json]
+  python3 seo_check.py page URL_OR_FILE [URL_OR_FILE ...] [--psi] [--json] [--html report.html]
+  python3 seo_check.py site https://example.com [--sample 20] [--crawl 40] [--json] [--html report.html]
 
 page  Audits the on-page elements of each URL (or local .html file): title,
-      meta description, headings, intro text, images, internal links,
-      canonical, robots, structured data, viewport, JS-rendering risk.
+      meta description, headings, intro text, images (alt, size attributes,
+      format, file weight), internal links, canonical, robots, structured data
+      (required properties per type), viewport, JS-rendering risk.
+      With 2+ targets it also compares them: duplicate titles and descriptions,
+      near-duplicate text and repeated paragraphs.
       --psi adds Core Web Vitals from the PageSpeed Insights API.
 
-site  Checks the whole site: http/https/www consolidation, robots.txt,
-      sitemaps, a sample of sitemap URLs (status, noindex, canonical),
-      soft 404s, broken/redirecting internal links and orphan candidates.
+site  Checks the whole site: http/https/www consolidation, analytics and
+      search-engine verification (GA4, GTM, GSC by DNS or meta, Bing),
+      robots.txt, sitemaps, a sample of sitemap URLs (status, noindex,
+      canonical), duplicate content across the crawl, soft 404s,
+      broken/redirecting internal links and orphan candidates.
 
-Output is a Markdown report on stdout (JSON with --json). Every finding is
-tagged FAIL / WARN / INFO / PASS so the caller can prioritise. Only the
-Python 3.9+ standard library is used, so it runs anywhere.
+Output is a Markdown report on stdout (JSON with --json, a styled HTML file
+with --html). Every finding is tagged FAIL / WARN / INFO / PASS so the caller
+can prioritise; --fail-on turns it into a CI gate. Only the Python 3.9+
+standard library is used, so it runs anywhere.
 
 This file is maintained in shared/ and copied into each skill's scripts/
 folder by `make sync`. Edit the shared copy.
@@ -41,12 +47,23 @@ from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 
-__version__ = "1.0.0"
+import report_html
+import schema_rules
+import setup_detect
+import similarity
+
+__version__ = "1.2.0"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 seo-checklist-skills")
 MAX_BYTES = 5_000_000
 LEVELS = ("FAIL", "WARN", "INFO", "PASS")
 ICON = {"FAIL": "❌", "WARN": "⚠️", "INFO": "ℹ️", "PASS": "✅"}
+ANSI = {"FAIL": "\033[1;97;41m", "WARN": "\033[1;30;43m", "INFO": "\033[1;97;44m", "PASS": "\033[1;30;42m"}
+HEAVY_IMAGE = 200_000      # bytes; heavier images are the usual cause of a slow LCP
+HEAVY_PAGE_IMAGES = 1_500_000
+_COLOR = {"on": False}
+_JS_PATH = re.compile(r"(?<![\w.])(/[\w./-]+?\.m?js)(?=[?\"'\\])")
+_ANALYTICS_NAME = re.compile(r"analytic|gtag|gtm|google|tag-?manager|consent", re.I)
 
 
 # --------------------------------------------------------------------------
@@ -148,6 +165,21 @@ def fetch(url, timeout=15, max_redirects=10, max_bytes=MAX_BYTES):
             "body": b"", "error": "too many redirects", "elapsed": round(time.time() - t0, 2)}
 
 
+def short_error(err):
+    """Plain-language version of common connection errors."""
+    e = (err or "").lower()
+    for needle, text in (("wrong_version_number", "no HTTPS on this host"),
+                         ("certificate_verify_failed", "TLS certificate not trusted"),
+                         ("nodename nor servname", "DNS name doesn't resolve"),
+                         ("name or service not known", "DNS name doesn't resolve"),
+                         ("getaddrinfo failed", "DNS name doesn't resolve"),
+                         ("connection refused", "connection refused"),
+                         ("timed out", "timed out"), ("too many redirects", "redirect loop")):
+        if needle in e:
+            return text
+    return (err or "unknown error")[:80]
+
+
 def decode(res):
     ct = res["headers"].get("content-type", "")
     m = re.search(r"charset=([\w-]+)", ct, re.I)
@@ -176,6 +208,8 @@ def load_local(path):
 
 class PageParser(HTMLParser):
     SKIP = {"script", "style", "noscript", "template", "svg"}
+    BLOCKS = {"p", "li", "blockquote", "dd", "td", "figcaption"}
+    CHROME = {"nav", "aside", "header", "footer"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -200,6 +234,22 @@ class PageParser(HTMLParser):
         self._h1_done = False
         self.empty_app_root = False
         self._root_watch = None
+        self.script_srcs = []    # external scripts, incl. preloaded chunks (analytics often hides there)
+        self.main_text = []      # text inside <main>/<article>
+        self.content_text = []   # text outside nav/header/footer/aside
+        self.blocks = []         # paragraph-level text blocks (for repeated-content checks)
+        self._main = 0
+        self._chrome = []
+        self._block = None
+        self._block_tag = None
+        self._block_depth = 0
+
+    def _flush_block(self):
+        if self._block is not None:
+            text = " ".join("".join(self._block).split())
+            if text:
+                self.blocks.append(text)
+        self._block, self._block_tag, self._block_depth = None, None, 0
 
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -216,6 +266,9 @@ class PageParser(HTMLParser):
                 self.meta.setdefault("charset", a["charset"])
         elif tag == "link":
             self.links.append(a)
+            rel = a.get("rel", "").lower()
+            if ("modulepreload" in rel or ("preload" in rel and a.get("as") == "script")) and a.get("href"):
+                self.script_srcs.append(a["href"])
         elif re.fullmatch(r"h[1-6]", tag) and not self._skip:
             self._heading = [int(tag[1]), []]
         elif tag == "img":
@@ -224,6 +277,8 @@ class PageParser(HTMLParser):
             self._anchor = [a.get("href", ""), [], a.get("rel", "").lower()]
         elif tag == "script":
             self.scripts += 1
+            if a.get("src"):
+                self.script_srcs.append(a["src"])
             if "ld+json" in a.get("type", "").lower():
                 self._jsonld = []
             else:
@@ -232,6 +287,17 @@ class PageParser(HTMLParser):
             self._skip += 1
         elif tag == "div" and a.get("id") in ("root", "app", "__next", "__nuxt", "svelte"):
             self._root_watch = {"depth": 0, "text": 0}
+        if tag in ("main", "article"):
+            self._main += 1
+        elif tag in self.CHROME and (tag in ("nav", "aside") or not self._main):
+            self._chrome.append(tag)
+        if tag in self.BLOCKS and not self._skip:
+            if self._block is not None and tag == "p" and self._block_tag == "p":
+                self._flush_block()  # an unclosed <p> is closed by the next one
+            if self._block is None:
+                self._block, self._block_tag, self._block_depth = [], tag, 1
+            else:
+                self._block_depth += 1
 
     def handle_endtag(self, tag):
         if tag == "title" and self._in_title:
@@ -259,6 +325,14 @@ class PageParser(HTMLParser):
             if self._root_watch["text"] < 20:
                 self.empty_app_root = True
             self._root_watch = None
+        if tag in ("main", "article") and self._main:
+            self._main -= 1
+        elif tag in self.CHROME and self._chrome and self._chrome[-1] == tag:
+            self._chrome.pop()
+        if tag in self.BLOCKS and self._block is not None:
+            self._block_depth -= 1
+            if self._block_depth <= 0:
+                self._flush_block()
 
     def handle_data(self, data):
         if self._jsonld is not None:
@@ -270,6 +344,12 @@ class PageParser(HTMLParser):
         if self._skip:
             return
         self.text.append(data)
+        if not self._chrome:
+            self.content_text.append(data)
+            if self._main:
+                self.main_text.append(data)
+            if self._block is not None:
+                self._block.append(data)
         if self._root_watch is not None:
             self._root_watch["text"] += len(data.strip())
         if self._heading:
@@ -287,7 +367,14 @@ def parse_html(html):
         p.close()
     except Exception:
         pass
+    p._flush_block()
     return p
+
+
+def main_content(p):
+    """The page's own text: <main>/<article> when it has enough words, else everything but nav/footer."""
+    main = " ".join(" ".join(p.main_text).split())
+    return main if len(main.split()) >= 30 else " ".join(" ".join(p.content_text).split())
 
 
 def jsonld_types(raw_blocks):
@@ -347,8 +434,78 @@ def url_issues(url):
     return issues
 
 
-def analyze_page(res, local=False):
-    """Return a dict of metrics plus findings [(level, check, message)]."""
+def _remote_image_size(url):
+    """Byte size of an image without downloading it: HEAD, then a 1-byte range request."""
+    for method, extra in (("HEAD", {}), ("GET", {"Range": "bytes=0-0"})):
+        _throttle()
+        try:
+            req = urllib.request.Request(url, method=method, headers={"User-Agent": UA, **extra})
+            with urllib.request.urlopen(req, timeout=10, context=_CTX) as r:
+                m = re.search(r"/(\d+)\s*$", r.headers.get("Content-Range", ""))
+                if m:
+                    return int(m.group(1))
+                cl = r.headers.get("Content-Length")
+                if cl and cl.isdigit() and (method == "HEAD" or r.status == 200):
+                    return int(cl)
+        except Exception:
+            continue
+    return None
+
+
+def _local_image_size(src, page_path):
+    rel = urllib.parse.unquote(src.split("?")[0].split("#")[0])
+    folder = os.path.dirname(os.path.abspath(page_path))
+    candidates = []
+    if rel.startswith("/"):  # site-root path: try the page's folder and its parents (static exports)
+        cur = folder
+        for _ in range(6):
+            candidates.append(os.path.join(cur, rel.lstrip("/")))
+            cur = os.path.dirname(cur)
+    else:
+        candidates.append(os.path.join(folder, rel))
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.getsize(c)
+    return None
+
+
+def image_weight_findings(imgs, base, local_path=None, cap=20, workers=8):
+    srcs = []
+    for i in imgs:
+        src = (i.get("src") or "").strip()
+        if src and not src.startswith("data:") and not re.search(r"\.svg(\?|#|$)", src, re.I) and src not in srcs:
+            srcs.append(src)
+    srcs = srcs[:cap]
+    if not srcs:
+        return []
+    if local_path:
+        sizes = [(s, None if "://" in s else _local_image_size(s, local_path)) for s in srcs]
+    else:
+        with ThreadPoolExecutor(workers) as ex:
+            got = list(ex.map(lambda s: _remote_image_size(urllib.parse.urljoin(base, s)), srcs))
+        sizes = list(zip(srcs, got))
+    known = [(s, n) for s, n in sizes if n is not None]
+    heavy = sorted([(s, n) for s, n in known if n > HEAVY_IMAGE], key=lambda t: -t[1])
+    total = sum(n for _, n in known)
+    f = []
+    if heavy:
+        f.append(("WARN", "img-weight", f"{len(heavy)} image(s) over {HEAVY_IMAGE // 1000} KB: " +
+                  ", ".join(f"{s[:70]} ({n // 1024} KB)" for s, n in heavy[:4]) +
+                  ". Compress them and serve WebP/AVIF at the displayed size"))
+    if total > HEAVY_PAGE_IMAGES:
+        f.append(("WARN", "img-weight", f"Images on this page weigh {total // 1024} KB in total"))
+    if known and not heavy and total <= HEAVY_PAGE_IMAGES:
+        f.append(("PASS", "img-weight", f"All {len(known)} images are under {HEAVY_IMAGE // 1000} KB "
+                                        f"({total // 1024} KB in total)"))
+    if len(known) < len(sizes):
+        f.append(("INFO", "img-weight", f"Couldn't get the size of {len(sizes) - len(known)} image(s)"))
+    return f
+
+
+def analyze_page(res, local=False, images=False):
+    """Return a dict of metrics plus findings [(level, check, message)].
+
+    images=True also measures the byte weight of the page's images (extra requests)."""
     url = res["url"]
     f = []
     out = {"url": url, "final_url": res["final_url"], "status": res["status"],
@@ -375,10 +532,18 @@ def analyze_page(res, local=False):
         f.append(("INFO", "content-type", f"Not HTML ({res['headers'].get('content-type')})"))
         return out
 
-    p = parse_html(decode(res))
+    html_text = decode(res)
+    p = parse_html(html_text)
     base = res["final_url"]
     words = " ".join(p.text).split()
     out["word_count"] = len(words)
+    content = main_content(p)
+    out["content_words"] = len(content.split())
+    out["_content"], out["_blocks"] = content, p.blocks
+    out["setup"] = setup_detect.detect_tags(html_text, p.meta)
+    # script tags, preloads, and chunk paths listed in inline framework data (Next.js app router)
+    listed = p.script_srcs + _JS_PATH.findall(html_text)[:300]
+    out["_scripts"] = list(dict.fromkeys(urllib.parse.urljoin(base, s) for s in listed))
 
     # Indexability
     robots = " ".join(filter(None, [p.meta.get("robots", ""), p.meta.get("googlebot", ""),
@@ -466,6 +631,11 @@ def analyze_page(res, local=False):
         f.append(("INFO", "img-format", f"{len(legacy)} images are JPG/PNG/GIF - consider WebP/AVIF"))
     if len(imgs) > 3 and not out["images"]["lazy"]:
         f.append(("INFO", "img-lazy", "No loading=\"lazy\" on any image"))
+    if imgs and imgs[0].get("loading") == "lazy":
+        f.append(("INFO", "img-lazy", "The first image is loading=\"lazy\". If it's the hero image, load it "
+                                      "eagerly: it's usually the LCP element"))
+    if images and imgs:
+        f.extend(image_weight_findings(imgs, base, res["url"] if local else None))
 
     # Links
     internal, external, nofollow_int = [], [], 0
@@ -499,7 +669,10 @@ def analyze_page(res, local=False):
     if not types:
         f.append(("WARN", "schema", "No JSON-LD structured data"))
     else:
-        f.append(("PASS", "schema", "JSON-LD types: " + ", ".join(out["schema_types"])))
+        rules = schema_rules.check_blocks(p.jsonld_raw)
+        if not any(lvl == "WARN" for lvl, _, _ in rules):
+            f.append(("PASS", "schema", "JSON-LD types: " + ", ".join(out["schema_types"])))
+        f.extend(rules)
     if "BreadcrumbList" not in types and not local and urllib.parse.urlparse(base).path not in ("", "/"):
         f.append(("INFO", "breadcrumbs", "No BreadcrumbList schema on this inner page"))
 
@@ -607,7 +780,62 @@ def parse_sitemap(xml_bytes):
     return ("index" if tag == "sitemapindex" else "urlset"), entries
 
 
-def check_site(start, sample=20, crawl=40, workers=8):
+SECTION_ORDER = ["Hosts & HTTPS", "Search engine setup", "robots.txt", "Sitemaps", "Sample",
+                 "Duplicate content", "404 handling", "Links & orphans"]
+
+
+def _bing_site_auth(origin):
+    r = fetch(origin + "/BingSiteAuth.xml", max_bytes=20_000)
+    return r["status"] == 200 and b"<users" in r["body"].lower()
+
+
+def setup_section(origin, homepage, dns=True, is_ip=False):
+    """Findings for T1/T2: analytics tags, GSC verification (DNS or meta), Bing verification."""
+    if not homepage or "setup" not in homepage:
+        return [("INFO", "analytics", "Homepage HTML unavailable - analytics and verification not checked")]
+    host = urllib.parse.urlparse(origin).hostname or ""
+    tags = dict(homepage["setup"])
+    if not tags["ga4"] and not tags["gtm"]:  # many sites inject the tag from their own JS bundles
+        own = [u for u in homepage.get("_scripts", []) if same_site(u, origin)]
+        own = sorted(own, key=lambda u: not _ANALYTICS_NAME.search(u.rsplit("/", 1)[-1]))[:40]
+        with ThreadPoolExecutor(8) as ex:
+            bodies = list(ex.map(lambda u: (u, fetch(u, max_bytes=3_000_000)), own))
+        for u, r in bodies:
+            if r["status"] == 200 and r["body"]:
+                found = setup_detect.ids_in_script(decode(r))
+                for kind in ("ga4", "gtm"):
+                    if found[kind]:
+                        tags[kind] = list(dict.fromkeys(tags[kind] + found[kind]))
+                        tags["source"] = urllib.parse.urlparse(u).path
+    google_dns = None
+    if dns and not is_ip:
+        google_dns = setup_detect.google_dns_verified(host, resolver=lambda n: setup_detect.dns_txt(n, ctx=_CTX))
+    bing = None if is_ip else _bing_site_auth(origin)
+    return setup_detect.findings(tags, google_dns=google_dns, bing_file=bing)
+
+
+def duplicate_section(pages):
+    """Findings for C4 across analysed pages: near-duplicates, repeated paragraphs, thin pages."""
+    docs, blocks, canon, words = {}, {}, {}, {}
+    for pg in pages:
+        if pg.get("noindex") or pg.get("status") != 200 or "_content" not in pg:
+            continue
+        key = pg["final_url"]
+        if key.rstrip("/") in {k.rstrip("/") for k in docs}:
+            continue
+        docs[key], blocks[key], canon[key] = pg["_content"], pg["_blocks"], pg.get("canonical")
+        words[key] = pg.get("content_words", 0)
+    if len(docs) < 2:
+        return []
+    f = similarity.findings(docs, blocks, canon, total_pages=len(docs))
+    thin = sorted((u for u, n in words.items() if 0 < n < 300), key=lambda u: words[u])
+    if thin:
+        f.append(("INFO", "thin-content", f"{len(thin)}/{len(docs)} pages have under 300 words of their own text: "
+                  + ", ".join(f"{u} ({words[u]})" for u in thin[:5]) + ". Expand, merge or noindex them"))
+    return f
+
+
+def check_site(start, sample=20, crawl=40, workers=8, dns=True, images=False):
     origin = normalize_origin(start)
     parsed = urllib.parse.urlparse(origin)
     bare = parsed.hostname.removeprefix("www.")
@@ -625,7 +853,7 @@ def check_site(start, sample=20, crawl=40, workers=8):
     finals = {}
     for r in results:
         if r["error"]:
-            f.append(("INFO", "hosts", f"{r['url']} -> unreachable ({r['error'][:60]})"))
+            f.append(("INFO", "hosts", f"{r['url']} -> unreachable ({short_error(r['error'])})"))
             continue
         hops = " -> ".join(f"{u} [{s}]" for u, s in r["chain"]) or "no redirect"
         finals[r["url"]] = r["final_url"]
@@ -733,8 +961,9 @@ def check_site(start, sample=20, crawl=40, workers=8):
             seen_norm.add(u.rstrip("/"))
             sample_urls.append(u)
     with ThreadPoolExecutor(workers) as ex:
-        pages = list(ex.map(lambda u: analyze_page(fetch(u)), sample_urls))
+        pages = list(ex.map(lambda u: analyze_page(fetch(u), images=images), sample_urls))
     report["pages"] = pages
+    S["Search engine setup"] = setup_section(origin, pages[0] if pages else None, dns=dns, is_ip=is_ip)
     in_sitemap = set(urls)
     for pg in pages:
         u = pg["url"]
@@ -787,7 +1016,7 @@ def check_site(start, sample=20, crawl=40, workers=8):
 
     # 6. Crawl for broken links, redirects, orphans
     f = []
-    seen, linked, sources, skipped = set(), set(), {}, set()
+    seen, linked, sources, skipped, analysed, offsite = set(), set(), {}, set(), [], []
     queue = deque([origin + "/"])
     crawled = 0
     allowed = lambda u: rp.can_fetch(UA, u)  # this crawler obeys robots.txt itself
@@ -811,10 +1040,14 @@ def check_site(start, sample=20, crawl=40, workers=8):
             crawled += 1
             if r["status"] != 200 or not is_html(r):
                 continue
+            if not same_site(r["final_url"], origin):  # internal URL that redirects to another site
+                offsite.append((r["url"], r["final_url"]))
+                continue
             a = analyze_page(r)
+            analysed.append(a)
             for link in a.get("_internal_urls", []):
                 link = link.split("?")[0] if "?" in link and "page=" not in link else link
-                if not link.startswith(("http://", "https://")):
+                if not link.startswith(("http://", "https://")) or not same_site(link, origin):
                     continue
                 if re.search(r"\.(jpg|jpeg|png|gif|webp|avif|svg|pdf|zip|mp4|css|js)$", link, re.I):
                     continue
@@ -837,6 +1070,9 @@ def check_site(start, sample=20, crawl=40, workers=8):
             f.append(("WARN", "cookie-redirect", f"{u} redirects to itself to set a cookie (linked from "
                                                  f"{sources.get(u)}). Googlebot crawls without cookies - check it "
                                                  "renders in GSC URL Inspection, or noindex it if it is an app page"))
+        elif not same_site(dest, origin):
+            f.append(("INFO", "offsite-redirect", f"Internal link {u} redirects to another site: {dest} (linked from "
+                                                  f"{sources.get(u)}). Fine for partner or affiliate links"))
         else:
             hops = " -> ".join(str(code) for _, code in chain)
             kind = f"{len(chain)}-hop redirect chain ({hops})" if len(chain) > 1 else f"a {hops} redirect"
@@ -846,6 +1082,10 @@ def check_site(start, sample=20, crawl=40, workers=8):
         f.append(("PASS", "broken-link", f"No broken internal links among {len(targets)} checked"))
     if skipped:
         f.append(("INFO", "crawl", f"Skipped {len(skipped)} URLs disallowed by robots.txt"))
+    if offsite:
+        u, dest = offsite[0]
+        f.append(("INFO", "crawl", f"{len(offsite)} internal URL(s) redirect to another site and weren't crawled "
+                                   f"further, e.g. {u} -> {dest}"))
     f.append(("INFO", "crawl", f"Crawled {crawled} pages, found {len(sources)} unique internal links"
                                + ("" if frontier_done
                                   else f" (stopped at --crawl {crawl}; raise it for full coverage)")))
@@ -856,6 +1096,14 @@ def check_site(start, sample=20, crawl=40, workers=8):
         f.append((lvl, "orphans", f"{len(orphans)} sitemap URLs were not linked from any crawled page{note}. "
                                   f"e.g. {orphans[:5]}"))
     S["Links & orphans"] = f
+    S["Duplicate content"] = duplicate_section([p for p in analysed + pages
+                                                if same_site(p.get("final_url") or "", origin)]) or [
+        ("INFO", "near-duplicate", "Fewer than 2 indexable pages to compare")]
+    order = {name: i for i, name in enumerate(SECTION_ORDER)}
+    report["sections"] = dict(sorted(S.items(), key=lambda kv: order.get(kv[0].split(" of ")[0], 99)))
+    for pg in pages:
+        for k in ("_content", "_blocks", "_scripts"):
+            pg.pop(k, None)
     return report
 
 
@@ -868,7 +1116,10 @@ def render_findings(findings, show_pass=True):
     for lvl in LEVELS:
         for l, check, msg in findings:
             if l == lvl and (show_pass or l != "PASS"):
-                lines.append(f"- {ICON[l]} **{l}** `{check}` {msg}")
+                if _COLOR["on"]:
+                    lines.append(f"  {ANSI[l]} {l:<4} \033[0m {msg} \033[2m{check}\033[0m")
+                else:
+                    lines.append(f"- {ICON[l]} **{l}** `{check}` {msg}")
     return lines
 
 
@@ -907,11 +1158,59 @@ def render_site(rep):
         if bad:
             lines += [f"**{pg['url']}**"] + render_findings(bad) + [""]
     lines += ["## Not checkable from outside (verify manually)", "",
-              "- GSC + GA4 installed and verified; GSC Page indexing report reviewed",
+              "- GSC and GA4 linked; GSC Page indexing report reviewed (the setup section shows only footprints)",
               "- Sitemap submitted to GSC and Bing Webmaster Tools",
               "- Core Web Vitals field data: run `page URL --psi` on key templates or open GSC > Core Web Vitals",
               "- Rich results: test key templates at https://search.google.com/test/rich-results", ""]
     return "\n".join(lines)
+
+
+def cross_page_findings(pages):
+    """Compare several analysed pages: shared titles/descriptions, near-duplicate text, repeated blocks."""
+    ok = [p for p in pages if p.get("status") == 200 and "title" in p]
+    if len(ok) < 2:
+        return []
+    f = []
+    for field, label in (("title", "title"), ("meta_description", "meta description")):
+        seen, targets = {}, {}
+        for p in ok:
+            if p.get(field):
+                seen.setdefault(p[field], []).append(p["url"])
+                targets.setdefault(p[field], set()).add((p.get("canonical") or p["url"]).rstrip("/"))
+        for value, urls in seen.items():
+            if len(urls) > 1 and len(targets[value]) > 1:  # pages sharing one canonical are one page
+                f.append(("WARN", "duplicates", f"{len(urls)} pages share the same {label} \"{value[:70]}\": "
+                                                f"{urls[:4]}"))
+    f.extend(duplicate_section(ok))
+    return f
+
+
+def looks_like_homepage(target):
+    if os.path.exists(target):
+        return re.match(r"(index|home|homepage)\.html?$", os.path.basename(target), re.I) is not None
+    return urllib.parse.urlparse(target if "://" in target else "https://" + target).path in ("", "/")
+
+
+def page_setup_findings(tags):
+    """Setup footprints for `page` runs on a homepage. Without the site run's script scan, DNS lookup and
+    BingSiteAuth.xml check, a missing tag is only a hint, so it stays INFO."""
+    out = []
+    for lvl, check, msg in setup_detect.findings(tags):
+        if lvl == "WARN" and "Universal Analytics" not in msg:
+            lvl, msg = "INFO", msg.replace("homepage HTML or its scripts", "page HTML") + \
+                " (`site` mode also looks inside the site's scripts)"
+        out.append((lvl, check, msg))
+    return out
+
+
+def write_outputs(args, findings, html_text):
+    if args.html:
+        with open(args.html, "w", encoding="utf-8") as fh:
+            fh.write(html_text)
+    if args.counts:
+        c = Counter(l for l, _, _ in findings)
+        with open(args.counts, "w", encoding="utf-8") as fh:
+            json.dump({lvl: c.get(lvl, 0) for lvl in LEVELS}, fh)
 
 
 def main(argv=None):
@@ -920,6 +1219,7 @@ def main(argv=None):
     pp = sub.add_parser("page", help="audit individual pages")
     pp.add_argument("targets", nargs="+", help="URLs or local .html files")
     pp.add_argument("--psi", action="store_true", help="add Core Web Vitals from PageSpeed Insights")
+    pp.add_argument("--no-images", action="store_true", help="skip measuring image file sizes")
     pp.add_argument("--json", action="store_true")
     sp = sub.add_parser("site", help="site-wide technical checks")
     sp.add_argument("url")
@@ -927,16 +1227,24 @@ def main(argv=None):
     sp.add_argument("--crawl", type=int, default=40, help="pages to crawl for links (default 40)")
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
+    sp.add_argument("--images", action="store_true", help="also measure image file sizes on sampled pages")
+    sp.add_argument("--no-dns", action="store_true", help="skip the DNS lookup for Search Console verification")
     for p in (pp, sp):
         p.add_argument("--insecure", action="store_true", help="skip TLS certificate verification")
         p.add_argument("--delay", type=float, default=0.0,
                        help="minimum seconds between requests (be gentle with small servers)")
         p.add_argument("--fail-on", choices=["FAIL", "WARN"],
                        help="exit 1 if any finding at this level (or worse) - for CI pipelines")
+        p.add_argument("--html", metavar="PATH", help="also write a styled, self-contained HTML report")
+        p.add_argument("--counts", metavar="PATH", help="also write finding counts as JSON (for CI)")
+        p.add_argument("--color", choices=["auto", "always", "never"], default="auto",
+                       help="colored badges in the terminal (auto: only when stdout is a terminal)")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
     configure(args.insecure)
     set_delay(args.delay)
+    _COLOR["on"] = not args.json and (args.color == "always" or (
+        args.color == "auto" and sys.stdout.isatty() and not os.environ.get("NO_COLOR")))
 
     if args.cmd == "page":
         pages = []
@@ -944,25 +1252,38 @@ def main(argv=None):
             local = os.path.exists(t)
             if not local and "://" not in t:
                 t = "https://" + t
-            pg = analyze_page(load_local(t) if local else fetch(t), local=local)
+            pg = analyze_page(load_local(t) if local else fetch(t), local=local, images=not args.no_images)
             if args.psi and not local:
                 pg["cwv"] = pagespeed(pg["final_url"])
                 pg["findings"].extend(cwv_findings(pg["cwv"]))
-            pg.pop("_internal_urls", None)
+            if looks_like_homepage(t) and pg.get("setup"):
+                pg["findings"].extend(page_setup_findings(pg["setup"]))
             pages.append(pg)
+        cross = cross_page_findings(pages)
+        for pg in pages:
+            for k in ("_internal_urls", "_content", "_blocks", "_scripts"):
+                pg.pop(k, None)
+        findings = [x for pg in pages for x in pg["findings"]] + cross
         if args.json:
-            print(json.dumps(pages, indent=2, default=str))
+            out = pages + ([{"url": "(across pages)", "findings": cross}] if cross else [])
+            print(json.dumps(out, indent=2, default=str))
         else:
             print("# On-page SEO check\n")
             for pg in pages:
                 print(render_page(pg))
-        return exit_code([x for pg in pages for x in pg["findings"]], args.fail_on)
+            if cross:
+                print("\n".join(["## Across these pages", "", summarize(cross), ""] + render_findings(cross)) + "\n")
+        write_outputs(args, findings, report_html.render_pages(pages, cross))
+        return exit_code(findings, args.fail_on)
 
-    rep = check_site(args.url, sample=args.sample, crawl=args.crawl, workers=max(1, args.workers))
+    rep = check_site(args.url, sample=args.sample, crawl=args.crawl, workers=max(1, args.workers),
+                     dns=not args.no_dns, images=args.images)
     for pg in rep.get("pages", []):
         pg.pop("_internal_urls", None)
+    findings = [x for fs in rep["sections"].values() for x in fs]
     print(json.dumps(rep, indent=2, default=str) if args.json else render_site(rep))
-    return exit_code([x for fs in rep["sections"].values() for x in fs], args.fail_on)
+    write_outputs(args, findings, report_html.render_site(rep))
+    return exit_code(findings, args.fail_on)
 
 
 def exit_code(findings, fail_on):

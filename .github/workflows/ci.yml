@@ -40,3 +40,36 @@ jobs:
           claude plugin validate .claude-plugin/plugin.json --strict
       - name: Package skills
         run: make package
+
+  action:
+    name: GitHub Action against the demo site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start the demo site
+        run: |
+          nohup python3 examples/demo_site.py --port 8799 > /dev/null 2>&1 &
+          for i in 1 2 3 4 5 6 7 8 9 10; do curl -sf http://127.0.0.1:8799/ > /dev/null && break; sleep 1; done
+      - name: Report only
+        id: report
+        uses: ./
+        with:
+          url: http://127.0.0.1:8799
+          fail-on: none
+          args: --no-dns
+          report-name: seo-report-demo
+      - name: The report found the planted issues
+        run: |
+          test "${{ steps.report.outputs.fail-count }}" -ge 3
+          test -s "${{ steps.report.outputs.report-dir }}/report.html"
+          grep -q "Duplicate content" "${{ steps.report.outputs.report-dir }}/report.md"
+      - name: Gate on FAIL
+        id: gate
+        continue-on-error: true
+        uses: ./
+        with:
+          url: http://127.0.0.1:8799
+          args: --no-dns
+          report-name: seo-report-gate
+      - name: The gate failed the step as expected
+        run: test "${{ steps.gate.outcome }}" = "failure"
