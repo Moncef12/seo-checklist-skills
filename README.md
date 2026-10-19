@@ -178,8 +178,9 @@ Each skill pairs Claude's judgment (search intent, priorities, rewrites) with sm
 
 ## Quality
 
-- **Behavioral evals:** 7 realistic requests, each run 3× with and without the plugin and graded by an LLM judge. The plugin scores **0.93 against 0.86** for the baseline, with the biggest gains on rewrites (+0.33) and consolidation plans (+0.17). The right skill loaded in **18/18** SEO requests and in **0/3** runs of a Google Ads near-miss. Details and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
-- **26 offline tests,** including an end-to-end run against the demo site, on Python 3.9, 3.11 and 3.13 in CI. Also `claude plugin validate --strict` and lint.
+- **Behavioral evals:** 12 realistic requests, each run 3× with and without the plugin and graded by an LLM judge. v1.2 adds 5 cases built so plain Claude is likely to miss what the scripts catch: a title cut off by pixel width at 56 characters, a city-swap doorway pair among 22 pages, a canonical that must be respected, schema that is valid JSON but not eligible, and a tracker update. Scores, triggering and caveats: [`evals/RESULTS.md`](evals/RESULTS.md).
+- **48 offline tests,** including an end-to-end run against the demo site and a stress test of the duplicate detection, on Python 3.9, 3.11 and 3.13 in CI. CI also runs the GitHub Action itself against the demo site, `claude plugin validate --strict` and lint.
+- **Tested on live production sites** (Next.js on Vercel and Netlify). Those runs caught three bugs before release: GA4 tags loaded from JavaScript bundles, a crawl that followed an off-site redirect, and over-eager repeated-paragraph warnings.
 
 <details>
 <summary><b>For developers: the bundled checkers, CI usage, project layout</b></summary>
