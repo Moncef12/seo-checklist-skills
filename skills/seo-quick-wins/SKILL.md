@@ -40,7 +40,12 @@ Only a `.zip` needs unpacking. If that's impossible, ask for the CSVs inside it,
 2. Write 2 title options (50-60 characters) and a meta description (120-160 characters) that match the query's wording, add a concrete hook (a number, the year, "free", an outcome), and line up with the H1. Check the counts with `python3 scripts/lengths.py --title "..." --meta "..."`.
 3. Record the before-CTR so the owner can compare after 2-4 weeks.
 
-**Q2. `site:yourdomain.com` on Google → fix titles that are cut off or miss the keyword.** Search `site:domain.com` (and `site:domain.com/blog`) with web search, or ask the owner for a screenshot. Look for titles ending in "…", titles Google rewrote (different from the `<title>`), boilerplate titles ("Home", "Untitled", duplicates), and titles missing the page's main keyword. Cross-check with `seo_check.py page` from the seo-on-page or seo-audit skill for exact lengths.
+**Q2. `site:yourdomain.com` on Google → fix titles that are cut off or miss the keyword.** With a query + page export (GSC API, Search Analytics for Sheets, Looker Studio), let the script do the check with data:
+```bash
+python3 scripts/gsc_analyze.py titles query_page.csv                           # fetches live titles
+python3 scripts/gsc_analyze.py titles query_page.csv --html-dir out/ --base https://example.com  # static build
+```
+It pairs each page with its top query by impressions, reads the live `<title>`, and flags titles that miss the query, only partly contain it, push it past the ~600 px cut-off, or get cut off themselves (an all-caps title can be cut at 50 characters). With only Pages.csv it checks length and truncation. Then search `site:domain.com` (web search, or ask for a screenshot) for what the script can't see: titles Google rewrote, and boilerplate ("Home", "Untitled"). Rewrite the worst ones with the top query near the start and verify counts with `lengths.py`.
 
 **Q3. Old pages on page 2 (positions 11-20) → update them first.** They already have relevance, so they need a push. Typical upgrades:
 - Close the content gaps against the top 3 results: missing subtopics and PAA questions.

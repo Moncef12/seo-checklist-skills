@@ -16,7 +16,11 @@ Planted issues (what a good audit should find):
   - cookie bounce: /app redirects to itself to set a cookie
   - /pricing: 78-char title, no meta description, no canonical, two H1s
   - /blog/invoice-template-guide: thin (under 100 words) and competes with /templates
-  - image without alt text and without dimensions on the homepage
+  - image without alt text and without dimensions on the homepage, and it weighs ~350 KB
+  - no analytics tag and no search-engine verification on the homepage
+  - /features/invoicing has an empty BreadcrumbList (schema without its required items)
+  - the same filler paragraph on most pages, and near-duplicate text on /pricing and /orphan-landing
+  - /partner (linked from the blog) redirects to another host; the crawler must not wander off-site
   - /admin/ is disallowed in robots.txt (the checker must not crawl it)
 Standard library only.
 """
@@ -83,7 +87,8 @@ PAGES = {
     "/blog/": page(
         f"Invoicing and Getting Paid: Guides for Freelancers | {BRAND}",
         '<h1>Blog</h1><ul><li><a href="/blog/how-to-write-an-invoice">How to write an invoice</a></li>'
-        '<li><a href="/blog/invoice-template-guide">Invoice template guide</a></li></ul>',
+        '<li><a href="/blog/invoice-template-guide">Invoice template guide</a></li></ul>'
+        '<p><a href="/partner">Partner offers</a></p>',
         desc="Practical guides on writing invoices, payment terms and getting paid on time as a freelancer "
              "or small agency owner.",
         path="/blog/"),
@@ -120,6 +125,7 @@ PAGES = {
     "/admin/": page("Admin", "<h1>Admin</h1>", path="/admin/", noindex=True),
 }
 
+HERO_BYTES = 350_000
 REDIRECTS = {"/old-pricing": "/pricing-2023", "/pricing-2023": "/pricing"}
 SITEMAP_PAGES = ["/", "/pricing", "/features/invoicing", "/templates", "/legacy", "/orphan-landing"]
 SITEMAP_BLOG = ["/blog/", "/blog/how-to-write-an-invoice", "/blog/invoice-template-guide"]
@@ -135,6 +141,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_HEAD(self):
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
+
     def _send(self, status, body=b"", ctype="text/html; charset=utf-8", headers=()):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
@@ -142,7 +155,8 @@ class Handler(BaseHTTPRequestHandler):
         for k, v in headers:
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(body)
 
     def do_GET(self):
         origin = f"http://{self.headers.get('Host')}"
@@ -160,12 +174,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, urlset(origin, SITEMAP_PAGES), "application/xml")
         if path == "/sitemap-blog.xml.gz":
             return self._send(200, gzip.compress(urlset(origin, SITEMAP_BLOG)), "application/gzip")
+        if path == "/partner":  # same server under another hostname = a different site
+            return self._send(301, headers=[("Location", f"http://localhost:{self.server.server_address[1]}/")])
         if path in REDIRECTS:
             return self._send(301, headers=[("Location", REDIRECTS[path])])
         if path == "/app" and "session=1" not in (self.headers.get("Cookie") or ""):
             return self._send(302, headers=[("Location", "/app"), ("Set-Cookie", "session=1; Path=/")])
         if path.startswith("/img/"):
-            return self._send(200, b"\x89PNG\r\n\x1a\n", "image/png")
+            size = HERO_BYTES if path == "/img/hero.png" else 8
+            return self._send(200, (b"\x89PNG\r\n\x1a\n" + b"\0" * size)[:max(size, 8)], "image/png")
         html = PAGES.get(path)
         if html is None:
             if path == "/features/reports":

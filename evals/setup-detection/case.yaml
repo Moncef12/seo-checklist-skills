@@ -1,0 +1,36 @@
+schema_version: "1.0"
+name: setup-detection
+description: T1/T2 from the homepage HTML. Must read GTM vs GA4, a legacy UA tag, and the verification method honestly.
+tags: [seo-technical, scripted]
+context:
+  add_dirs: ["site"]
+execution:
+  max_turns: 15
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    Is our Google Analytics 4, Search Console and Bing setup done? Our homepage HTML is site/homepage.html in your
+    additional working directories. The developer told us "GA4 is installed". Keep it short.
+graders:
+  - name: gtm-not-proof-of-ga4
+    type: llm
+    criteria: |
+      The response notes the page loads a Google Tag Manager container (GTM-W7K2QX9) but no direct GA4 tag, so
+      GA4 can only be confirmed inside GTM (or in GA4 Realtime), rather than confirming GA4 is installed.
+  - name: legacy-ua
+    type: llm
+    criteria: |
+      The response flags the Universal Analytics tag (UA-48213377-2 / analytics.js) as legacy or dead (stopped
+      processing data in 2023) and recommends removing or replacing it.
+  - name: verification-honest
+    type: llm
+    criteria: |
+      The response says Search Console verification is visible through a google-site-verification meta tag (a
+      URL-prefix style verification) and/or suggests a Domain property verified by DNS, AND says Bing Webmaster
+      Tools verification is not visible from the HTML (suggesting to add it, e.g. by importing from Search Console),
+      without claiming the sitemap was submitted.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

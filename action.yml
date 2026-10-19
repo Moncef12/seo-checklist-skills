@@ -1,0 +1,93 @@
+name: SEO Checklist Check
+description: Technical SEO gate for CI. Crawls a site (or checks pages) and fails the job on SEO regressions.
+author: Moncef Hassein-bey
+branding:
+  icon: search
+  color: orange
+
+inputs:
+  url:
+    description: Site URL (mode site), or one or more page URLs separated by spaces (mode page).
+    required: true
+  mode:
+    description: "site: whole-site checks (hosts, robots, sitemaps, sample, duplicates, links). page: on-page checks."
+    default: site
+  crawl:
+    description: Pages to crawl for broken links, orphans and duplicate content (mode site).
+    default: "100"
+  sample:
+    description: Sitemap URLs to inspect in detail (mode site).
+    default: "20"
+  fail-on:
+    description: "FAIL (default), WARN, or none to only report."
+    default: FAIL
+  args:
+    description: Extra arguments for seo_check.py, e.g. "--delay 0.5 --no-dns".
+    default: ""
+  report-name:
+    description: Name of the uploaded artifact with the HTML, Markdown and JSON reports.
+    default: seo-report
+
+outputs:
+  fail-count:
+    description: Number of FAIL findings.
+    value: ${{ steps.check.outputs.fail-count }}
+  warn-count:
+    description: Number of WARN findings.
+    value: ${{ steps.check.outputs.warn-count }}
+  report-dir:
+    description: Folder with report.html, report.md and counts.json.
+    value: ${{ steps.check.outputs.report-dir }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        SEO_URL: ${{ inputs.url }}
+        SEO_MODE: ${{ inputs.mode }}
+        SEO_CRAWL: ${{ inputs.crawl }}
+        SEO_SAMPLE: ${{ inputs.sample }}
+        SEO_FAIL_ON: ${{ inputs.fail-on }}
+        SEO_ARGS: ${{ inputs.args }}
+        SEO_REPORT: ${{ inputs.report-name }}
+      run: |
+        set -uo pipefail
+        out="$RUNNER_TEMP/seo-report"
+        mkdir -p "$out"
+        echo "report-dir=$out" >> "$GITHUB_OUTPUT"
+        case "$SEO_MODE" in
+          site) target=(site "$SEO_URL" --crawl "$SEO_CRAWL" --sample "$SEO_SAMPLE") ;;
+          page) read -ra urls <<< "$SEO_URL"; target=(page "${urls[@]}") ;;
+          *) echo "::error::mode must be 'site' or 'page', got '$SEO_MODE'"; exit 2 ;;
+        esac
+        gate=()
+        case "$SEO_FAIL_ON" in
+          FAIL|WARN) gate=(--fail-on "$SEO_FAIL_ON") ;;
+          none|"") ;;
+          *) echo "::error::fail-on must be FAIL, WARN or none, got '$SEO_FAIL_ON'"; exit 2 ;;
+        esac
+        read -ra extra <<< "$SEO_ARGS"
+        python3 "$GITHUB_ACTION_PATH/shared/seo_check.py" "${target[@]}" ${extra[@]+"${extra[@]}"} \
+          --color never --html "$out/report.html" --counts "$out/counts.json" \
+          ${gate[@]+"${gate[@]}"} > "$out/report.md"
+        code=$?
+        cat "$out/report.md" >> "$GITHUB_STEP_SUMMARY"
+        if [ -f "$out/counts.json" ]; then
+          python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print("fail-count=%d" % c["FAIL"]); print("warn-count=%d" % c["WARN"])' \
+            "$out/counts.json" >> "$GITHUB_OUTPUT"
+        else
+          printf 'fail-count=\nwarn-count=\n' >> "$GITHUB_OUTPUT"
+        fi
+        if [ "$code" -ne 0 ]; then
+          echo "::error::SEO check found issues at level ${SEO_FAIL_ON} or worse (see the job summary and the $SEO_REPORT artifact)"
+        fi
+        exit $code
+
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.report-name }}
+        path: ${{ runner.temp }}/seo-report/
+        if-no-files-found: ignore

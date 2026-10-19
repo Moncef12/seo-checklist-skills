@@ -27,10 +27,11 @@ python3 scripts/seo_check.py page https://example.com/ https://example.com/prici
 python3 scripts/gsc_analyze.py quick-wins ~/Downloads/example.com-Performance.zip   # if provided
 ```
 
-- `site` covers hosts/HTTPS, robots.txt, sitemaps, indexability of a URL sample, soft 404s, broken links, internal redirects and orphan candidates.
-- `page --psi` covers titles, meta, headings, intro, images, schema, canonical, viewport, JS-rendering risk and Core Web Vitals.
+- `site` covers hosts/HTTPS, analytics and verification footprints (GA4, GTM, Search Console by DNS or meta, Bing), robots.txt, sitemaps, indexability of a URL sample, duplicate and near-duplicate content across the crawl, soft 404s, broken links, internal redirects and orphan candidates.
+- `page --psi` covers titles, meta, headings, intro, images (including file weight), schema with the required properties per type, canonical, viewport, JS-rendering risk and Core Web Vitals.
+- With a query + page Search Console export, `gsc_analyze.py titles` checks every page's live title against its top query (item Q2).
 - If a fetch fails with a certificate error, rerun with `--insecure`. If the site blocks the script, fall back to WebFetch and your own reading of the HTML.
-- For local files (a static export or build output), pass the `.html` paths to `page`. There's no `site` mode for files, so check links between pages, orphans, noindex and duplicates yourself by reading them.
+- For local files (a static export or build output), pass all the `.html` paths to `page` in one run: besides each page, it compares them (shared titles and descriptions, near-duplicate text, repeated paragraphs). There's no `site` mode for files, so check links between pages, orphans and noindex yourself by reading them.
 - **If the scripts can't run at all** (no shell, sandbox, no network), keep going. Read the HTML with Read or WebFetch and apply the same checks by hand: title and meta lengths, H1 count and heading order, canonical, robots meta, viewport, alt attributes, JSON-LD, internal links. Scripts make the audit faster and more precise, but they aren't a prerequisite.
 - For the search-intent and competitor items, look at the live SERP. Use a SERP tool if connected (e.g. `serp_organic_live_advanced`), otherwise web search.
 
@@ -61,11 +62,21 @@ A site with 3 pages and no traffic needs different priorities from a 5,000-page 
 
 ## 5. Report
 
-Use `references/report-template.md`. Keep the executive summary to five bullets. Give every recommendation a concrete "do this", such as the rewritten title with its character count or the exact redirect rule, not "optimize titles".
+Use `references/report-template.md`. Keep the executive summary to five bullets. When the user wants a file to share, add `--html seo-report.html` to the `site` run: it writes a styled, self-contained report. Give every recommendation a concrete "do this", such as the rewritten title with its character count or the exact redirect rule, not "optimize titles".
 
 ## 6. Fix (when you have the codebase)
 
 Offer to implement the top fixes. Detect the stack first (Next.js metadata API, Nuxt `useSeoMeta`, Astro, WordPress, plain HTML), then follow the stack-specific patterns in the seo-technical skill's `references/fixes.md`. Change titles and meta through the framework's own mechanism instead of hard-coding tags into templates.
+
+## 7. Track progress (`/seo checklist`, or when asked to track the checklist)
+
+Keep a living `SEO-CHECKLIST.md` in the project so the owner can work through it one section at a time and see what changed between runs:
+
+1. Write the statuses you graded in step 3 to a JSON file, one entry per item you have evidence for, with a short note: `{"T5": {"status": "pass", "note": "self-canonical on all sampled pages"}, "O2": {"status": "fail", "note": "/pricing title is 79 chars"}}`. Statuses: `pass`, `needs-work`, `fail`, `unknown`, `na`.
+2. Run `python3 scripts/checklist.py update --file SEO-CHECKLIST.md --statuses statuses.json --site <url>`. It creates the file on the first run, keeps items you didn't re-check, respects boxes the owner ticked by hand, and lists what improved or regressed.
+3. Show the progress line and the changes, then the next 3-5 items to fix.
+
+Without a shell, write the same file by hand: 40 `- [ ]` lines grouped by section, ticked when passing, with the status and note on each line.
 
 ## Going deeper
 

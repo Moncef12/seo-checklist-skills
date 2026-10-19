@@ -47,7 +47,7 @@ On-page work decides whether a page that *can* rank actually *does*. The goal is
 - Strong: "A good email open rate is 35-45% in 2026, but it varies by industry: B2B SaaS averages ~38%, ecommerce ~30%."
 
 **O6. Images and alt text.**
-- Use WebP/AVIF, sized to how they're displayed, with `width`/`height` set.
+- Use WebP/AVIF, sized to how they're displayed, with `width`/`height` set. `seo_check.py page` measures each image's file weight (HEAD requests, or file sizes for a local build) and flags anything over 200 KB, plus a lazy-loaded first image.
 - Lazy-load images below the fold, but never the hero/LCP image.
 - Use descriptive file names (`blue-running-shoe-side.webp`).
 - Alt text describes the image for someone who can't see it and includes the keyword only where it's naturally accurate. Decorative images get `alt=""`.

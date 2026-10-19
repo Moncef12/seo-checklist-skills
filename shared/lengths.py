@@ -19,20 +19,31 @@ _NARROW = set("iljtf!|.,:;'`()[]{}/\\ ")
 _WIDE = set("mwMW@%&")
 
 
+def _char_px(ch):
+    if ch in _NARROW:
+        return 5.6
+    if ch in _WIDE:
+        return 16.7
+    if ch.isupper():
+        return 13.3
+    if ch.isdigit():
+        return 11.1
+    return 10.0
+
+
 def px(text, size=20):
-    w = 0.0
+    return round(sum(_char_px(ch) for ch in text) * size / 20)
+
+
+def visible_part(text, limit=600, size=20):
+    """The part of `text` that fits in `limit` px - roughly what Google shows before the "...". """
+    w, out = 0.0, []
     for ch in text:
-        if ch in _NARROW:
-            w += 5.6
-        elif ch in _WIDE:
-            w += 16.7
-        elif ch.isupper():
-            w += 13.3
-        elif ch.isdigit():
-            w += 11.1
-        else:
-            w += 10.0
-    return round(w * size / 20)
+        w += _char_px(ch) * size / 20
+        if w > limit:
+            return "".join(out).rstrip()
+        out.append(ch)
+    return text
 
 
 def verdict(n, lo, hi):

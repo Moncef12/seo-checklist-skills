@@ -6,17 +6,26 @@
 skills/seo/SKILL.md            /seo command router: menu + mode table -> sibling skills (Claude Code only)
 skills/<skill>/SKILL.md        instructions Claude loads when the skill triggers (keep < ~150 lines)
 skills/<skill>/references/     detail loaded on demand (framework fixes, templates, checklists)
-skills/<skill>/scripts/        copies of shared/ scripts - DO NOT edit here
-shared/                        source of truth for seo_check.py and gsc_analyze.py
+skills/<skill>/scripts/        copies of shared/ - DO NOT edit here (`make sync` copies every module)
+shared/seo_check.py            page and site checks, CLI, Markdown/JSON output
+shared/gsc_analyze.py          Search Console exports: quick wins, decliners, cannibalization, titles
+shared/similarity.py           near-duplicate and repeated-paragraph detection (C4)
+shared/setup_detect.py         analytics and verification footprints, DNS-over-HTTPS (T1, T2)
+shared/schema_rules.py         JSON-LD required/recommended properties per type (T13)
+shared/report_html.py          the self-contained HTML report
+shared/checklist.py            SEO-CHECKLIST.md tracker
+shared/lengths.py              exact character counts and pixel widths
+action.yml                     the GitHub Action (composite, runs shared/seo_check.py)
 examples/demo_site.py          local demo site with planted issues (tests + sample reports)
 tests/                         offline unit + integration tests
 evals/<case>/case.yaml         behavioral evals run with `claude plugin eval`
+evals/build_fixtures.py        rebuilds the fixtures of the v1.2 eval cases
 ```
 
 ## Workflow
 
-1. Edit `shared/*.py` or the skill markdown.
-2. `make sync` copies shared scripts into the skills that use them. CI fails if the copies drift.
+1. Edit `shared/*.py` or the skill markdown. Modules use only the standard library and may import each other.
+2. `make sync` copies every shared module into each skill that runs scripts. CI fails if a copy drifts or a stale one is left behind.
 3. `make test lint validate`
 4. For behavior changes, add or adjust an eval case, then run `make eval` (it costs a few dollars of
    API usage). Compare the with-plugin arm against the baseline.

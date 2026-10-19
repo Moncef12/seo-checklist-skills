@@ -1,0 +1,36 @@
+schema_version: "1.0"
+name: schema-required-fields
+description: Valid JSON-LD that still won't earn rich results (T13). Must name the missing required properties per type.
+tags: [seo-technical, scripted]
+context:
+  add_dirs: ["pages"]
+execution:
+  max_turns: 20
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    We added structured data to six templates (the `pages` folder in your additional working directories). The
+    JSON-LD validates as JSON. Will each one get its rich result in Google? Tell me exactly what's missing or wrong
+    per page, briefly.
+graders:
+  - name: product-and-event
+    type: llm
+    criteria: |
+      The response says product.html's Product lacks offers, review or aggregateRating (at least one of them is
+      required for a product rich result), AND that event.html's Event lacks the required location.
+  - name: breadcrumbs-and-local-business
+    type: llm
+    criteria: |
+      The response says the BreadcrumbList in breadcrumbs.html has an item without a position (the first one) and/or
+      a non-final item without its URL ("item"), AND that the Dentist in dentist.html lacks the required address.
+  - name: dates-and-faq-reality
+    type: llm
+    criteria: |
+      The response flags the BlogPosting datePublished "10/03/2026" as not ISO 8601 (should be 2026-10-03 or
+      2026-03-10 style), AND says the FAQ markup is valid but FAQ rich results are limited to well-known government
+      and health sites, so it won't show the FAQ dropdowns for this site.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

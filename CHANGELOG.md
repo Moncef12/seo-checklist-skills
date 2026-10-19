@@ -3,6 +3,48 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-19
+
+### Added
+- **Search engine setup (T1, T2).** `site` reads the analytics and verification footprints: GA4 and Tag
+  Manager tags (also inside the site's own JavaScript bundles, where Next.js and similar apps load them),
+  legacy Universal Analytics, Google consent mode, a Search Console Domain property verified by DNS (TXT
+  record over DNS-over-HTTPS, `--no-dns` to skip), the verification meta tags and Bing's BingSiteAuth.xml.
+- **Duplicate content (C4).** `site` compares the main text of every crawled page (nav and footer ignored):
+  near-duplicate groups scored by the share of words that match in order, which also catches templated
+  doorway pages where only a city name changes; paragraphs pasted on several pages, warned only when they're
+  a large part of those pages; thin pages by their own word count. Pages already consolidated with
+  rel=canonical are left out. `page` runs the same comparison across several files (static builds).
+- **Title check (Q2).** `gsc_analyze.py titles` pairs each page with its top Search Console query, reads the
+  live title (or a static build with `--html-dir`) and flags titles that miss the query, only partly contain
+  it, push it past the ~600 px cut-off, or get cut off themselves.
+- **Schema rules (T13).** Required and recommended properties per type (Product, Offer, AggregateRating,
+  BreadcrumbList items, FAQPage, LocalBusiness and its subtypes, Event, VideoObject, Recipe, JobPosting,
+  SoftwareApplication, Article family), ISO 8601 dates, relative URLs, missing @context, and the retired
+  HowTo, FAQ and sitelinks search box features.
+- **Image weight (O6).** `page` measures each image's file size (HEAD or a 1-byte range request, or the file
+  size in a local build) and flags images over 200 KB and a lazy-loaded first image.
+- **Progress tracker.** `checklist.py` and the `/seo checklist` mode keep a living `SEO-CHECKLIST.md` in the
+  project: the 40 items by section, progress, what improved or regressed since the last run, and boxes ticked
+  by hand are kept.
+- **HTML report.** `--html report.html` writes a styled, self-contained report (dark and light themes, all
+  site content escaped). `--color` gives colored badges in a terminal, `--counts` writes finding counts.
+- **GitHub Action.** `uses: Moncef12/seo-checklist-skills@v1.2.0` runs the check in CI, writes the job
+  summary, uploads the reports and fails the job at the level you choose.
+- New `/seo` modes: `titles`, `dupes`, `report`, `checklist`.
+- 5 behavioral eval cases built so plain Claude is likely to miss what the scripts catch: titles cut off by
+  pixel width at 56 characters, a city-swap doorway pair among 22 pages, an existing canonical to respect,
+  schema that is valid JSON but not eligible, setup footprints, and the tracker update.
+
+### Fixed
+- The crawler could leave the site when an internal URL redirected to another domain, then crawl that
+  domain's links. It now stays on the site and reports the off-site redirect.
+- Connection errors are reported in plain words ("no HTTPS on this host", "DNS name doesn't resolve").
+
+### Changed
+- Every skill that runs scripts now gets all shared modules (`make sync`), and `check-sync` also catches
+  stale copies.
+
 ## [1.1.0] - 2026-09-29
 
 ### Added

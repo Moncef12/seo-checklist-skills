@@ -17,8 +17,8 @@ Deep dive: **seo-technical**
 
 | # | Item | Done when | Verify |
 |---|---|---|---|
-| T1 | Set up GSC and GA4 | A GSC Domain property is verified by DNS. GA4 is collecting data. The two are linked. | Ask the owner or check for a `gtag`/GTM snippet in the HTML. GSC can't be seen from outside, so mark ❓ unless confirmed. |
-| T2 | Submit sitemap to GSC and Bing | An XML sitemap exists, is listed in robots.txt, and has been submitted in both GSC and Bing Webmaster Tools. | `site` checks existence and the robots line. Submission is ❓ unless confirmed. |
+| T1 | Set up GSC and GA4 | A GSC Domain property is verified by DNS. GA4 is collecting data. The two are linked. | `site` setup section: GA4/GTM tag, legacy UA, and the google-site-verification DNS record or meta tag. Data collection and linking need access, so they stay ❓ unless confirmed. |
+| T2 | Submit sitemap to GSC and Bing | An XML sitemap exists, is listed in robots.txt, and has been submitted in both GSC and Bing Webmaster Tools. | `site` checks existence, the robots line and Bing verification (msvalidate.01 or BingSiteAuth.xml). Submission is ❓ unless confirmed. |
 | T3 | Fix indexing issues | Important pages are indexed. The GSC "Page indexing" report has no unexpected exclusions. | GSC export or screenshot. `site` flags non-200, noindex and blocked URLs in the sitemap. `site:domain.com` gives a rough count. |
 | T4 | Check robots.txt and noindex tags | robots.txt doesn't block important paths or JS/CSS. No accidental `noindex` or `X-Robots-Tag`. | `site` (robots section and sample), `page` (noindex finding) |
 | T5 | Add canonical tags | Every indexable page has exactly one absolute, self-referencing canonical. Duplicates point to the primary. | `page`, `site` sample |
@@ -29,7 +29,7 @@ Deep dive: **seo-technical**
 | T10 | Use clean, descriptive URLs | URLs are lowercase, hyphenated and readable. There are no session or tracking params and no opaque IDs. | `page`/`site` `url` findings |
 | T11 | Add breadcrumbs | Inner pages show a visible breadcrumb trail backed by `BreadcrumbList` schema. | `page` `breadcrumbs` finding |
 | T12 | Fix orphan pages | Every indexable page gets at least one internal link from a crawlable page. | `site --crawl 500` or higher for full coverage. Compare the sitemap against the crawl. |
-| T13 | Add schema, test in Rich Results | Relevant JSON-LD (Organization, Article, Product, BreadcrumbList...) is valid in the Rich Results Test. | `page` (schema types, invalid JSON). Then run https://search.google.com/test/rich-results |
+| T13 | Add schema, test in Rich Results | Relevant JSON-LD (Organization, Article, Product, BreadcrumbList...) is valid in the Rich Results Test. | `page`: schema types, invalid JSON, and missing required properties per type. Then run https://search.google.com/test/rich-results |
 
 ## Quick wins
 Deep dive: **seo-quick-wins**. These mostly need GSC data.
@@ -37,7 +37,7 @@ Deep dive: **seo-quick-wins**. These mostly need GSC data.
 | # | Item | Done when | Verify |
 |---|---|---|---|
 | Q1 | High impressions, low CTR in GSC | Rows with CTR well below the norm for their position have a rewritten title and meta description. | `gsc quick-wins` > "High impressions, low CTR" |
-| Q2 | Search `site:yourdomain.com` on Google | The titles shown in results aren't cut off or rewritten by Google, and they contain the target keyword. | Run the search (web search tool or the owner) and compare it with the `page` title lengths. |
+| Q2 | Search `site:yourdomain.com` on Google | The titles shown in results aren't cut off or rewritten by Google, and they contain the target keyword. | `gsc titles` on a query + page export: live title vs. top query, ~600 px cut-off. Then the `site:` search for rewrites. |
 | Q3 | Old pages ranking on page 2 | Pages at positions 11-20 have been refreshed and strengthened first. | `gsc quick-wins` > "Page 2" |
 | Q4 | "People also ask" on your keywords | PAA questions for your main keywords are answered in quick FAQ sections or pages. | SERP tool PAA items, plus the "Question queries" list from `gsc quick-wins` |
 | Q5 | Pages losing traffic or rankings | Decliners are refreshed before they drop further. | `gsc decliners` on a compare-mode export |
@@ -52,7 +52,7 @@ Deep dive: **seo-on-page**
 | O3 | Unique meta descriptions | Each page has its own description of about 120-160 characters with the keyword and a reason to click. | `page`, `site` duplicates |
 | O4 | Fix heading structure | There is one H1 matching the topic, and H2/H3 follow a logical outline with no skipped levels. | `page` h1, heading-order and outline |
 | O5 | Answer the query in the first 2 lines | The text right after the H1 directly answers the main query. | `page` "Intro after H1". Judge it against the keyword. |
-| O6 | Optimize images, add alt text | Images are compressed WebP/AVIF, have width and height set, lazy-load below the fold, and have descriptive alt text. | `page` img-* findings |
+| O6 | Optimize images, add alt text | Images are compressed WebP/AVIF, have width and height set, lazy-load below the fold, and have descriptive alt text. | `page` img-* findings, including file weight (over 200 KB) |
 | O7 | Internal links to important pages | Money pages and pillars get contextual links with descriptive anchors from relevant, strong pages. | `page` internal-link count and anchors. Use GSC Links > Top linked pages. |
 
 ## Content
@@ -63,7 +63,7 @@ Deep dive: **seo-content**
 | C1 | Find your competitors' keywords | There is a list of keywords that competitors rank for and you don't. | Keyword MCP (ranked keywords / domain intersection) or an Ahrefs/Semrush export |
 | C2 | Find high-volume, low-KD keywords | The content plan targets winnable keywords, not just the biggest ones. | Keyword MCP (volume + KD) or a tool export |
 | C3 | Fix keyword cannibalization | Each query has one clear owner URL. | `gsc cannibalization` on query+page data, or `site:domain.com keyword` |
-| C4 | Merge thin or overlapping pages | Thin or duplicate pages are merged, and the old URLs 301 to the survivor. | `page` word counts, cannibalization output, GSC pages with impressions but no clicks |
+| C4 | Merge thin or overlapping pages | Thin or duplicate pages are merged, and the old URLs 301 to the survivor. | `site` "Duplicate content" section (near-duplicates, repeated paragraphs, thin pages), cannibalization output, GSC pages with impressions but no clicks |
 | C5 | Topic clusters around pillar pages | Each core topic has a pillar page, and its supporting pages link to it and to each other. | Map the URLs by topic and check the internal links. |
 | C6 | Pages for each feature and use case | Every feature and every use case or audience has its own landing page. | Compare the product's features with the sitemap. |
 | C7 | Comparison and alternatives pages | Fair "X vs Y" and "X alternatives" pages exist for the main competitors. | Sitemap/URL search, SERP for "[competitor] alternatives" |

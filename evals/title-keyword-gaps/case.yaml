@@ -1,0 +1,55 @@
+schema_version: "1.0"
+name: title-keyword-gaps
+description: "The site: check (Q2) with data. Titles must be judged against each page's top query and by pixel width, not just character count."
+tags: [seo-quick-wins, scripted, hard]
+context:
+  add_dirs: ["site", "gsc"]
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Skill, Bash]
+  prompt: |
+    Can you do the "site:" check on our titles with real data? I exported query + page rows from Search Console
+    (gsc/query_page.csv in your additional working directories) and the static build of the site is in the
+    `site` folder (site/index.html is /, site/pricing.html is /pricing, site/blog/index.html is /blog/, and so
+    on). Our domain is https://getpayly.example. Which titles are cut off in Google or miss the keyword people
+    actually search for, which ones are fine, and what should the bad ones say instead? Answer in chat.
+graders:
+  - name: homepage-misses-top-query
+    type: llm
+    criteria: |
+      The response says the homepage title ("Billing App for Self-Employed People | Payly") misses the page's main
+      search query "invoice software for freelancers" (its top query by impressions, 12,000), and treats that as
+      the most important or one of the most important fixes. It does not treat the brand query "payly" as the
+      homepage's target keyword.
+  - name: all-caps-title-cut-off-by-width
+    type: llm
+    criteria: |
+      The response flags the /blog/how-to-write-an-invoice title ("HOW TO WRITE AN INVOICE THAT GETS PAID: WORKER
+      CHECKLIST") as likely to be cut off in search results BECAUSE OF ITS PIXEL WIDTH (all capital letters are
+      wider), even though it is only about 56 characters. Saying it is fine because it is under 60 characters, or
+      only criticising the capital letters for style, does not pass.
+  - name: pricing-and-partial-matches
+    type: llm
+    criteria: |
+      The response flags at least three of these four: (1) /pricing title is too long / cut off and its query
+      "enterprise invoicing" is missing or pushed past the cut-off; (2) /blog/late-payment-fees title lacks
+      "invoice" from its query "late fee for invoice"; (3) /integrations/stripe title "Stripe Integration | Payly"
+      lacks "invoicing" from "stripe invoicing"; (4) /blog/ and /resources share the same title "Payly Blog".
+  - name: leaves-good-titles-alone
+    type: llm
+    criteria: |
+      The response does not recommend rewriting the /templates title ("Free Invoice Templates for Freelancers
+      (Word, PDF, Excel)") or the /features/reminders title ("Automatic Payment Reminders That Chase Late
+      Clients") as problems; it either calls them fine or doesn't list them among the fixes.
+  - name: rewrites-with-counts
+    type: llm
+    criteria: |
+      The response gives a concrete replacement title for at least three of the flagged pages, each containing the
+      page's top query (or a very close variant) and each with a character count.
+  - name: skill-fired
+    type: tool_used
+    tool: Skill
+    input_match: "seo-"
+    min: 1
+    arm: with-only

@@ -5,12 +5,18 @@ gsc_analyze.py - find SEO quick wins in Google Search Console exports.
   python3 gsc_analyze.py quick-wins  EXPORT.zip|Queries.csv|Pages.csv [--min-impressions 100]
   python3 gsc_analyze.py decliners   EXPORT.zip|Pages.csv   (export made in "Compare" mode)
   python3 gsc_analyze.py cannibalization query_page.csv     (query + page rows, e.g. API export)
+  python3 gsc_analyze.py titles query_page.csv [--html-dir out/ --base https://example.com]
 
 quick-wins       High impressions but low CTR for the position (rewrite title/meta),
                  queries/pages sitting on page 2 (positions 11-20, update first) and
                  question-style queries (answer them in FAQ sections/pages).
 decliners        Pages or queries losing clicks or position between two periods.
 cannibalization  Queries where several of your URLs split the impressions.
+titles           The `site:` check (checklist Q2) with data: fetches each page's live <title>
+                 and flags titles that miss the page's top query, cut it off past ~600 px,
+                 or would be truncated. Needs query + page rows for the keyword check; with
+                 Pages.csv alone it checks length and truncation only. --html-dir reads a
+                 static build instead of fetching (/a/b -> a/b.html, a/b/index.html or a__b.html).
 
 How to export from GSC: Performance > Search results > pick a date range
 (3 months is a good default) > Export > Download CSV. That gives a .zip with
@@ -24,12 +30,15 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import sys
+import urllib.parse
 import zipfile
-
-__version__ = "1.0.0"
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+
+__version__ = "1.2.0"
 
 # Rough organic CTR by position (blended desktop+mobile, industry studies).
 # Real CTR varies a lot with SERP features; used only to flag outliers.
@@ -196,13 +205,18 @@ def decliners(rows, min_clicks_lost, swap=False):
             "previous": prefixes[prev_i], "decliners": out}
 
 
-def cannibalization(rows, min_share):
-    dims, recs = normalize(rows)
+def query_page_columns(dims):
     low = [d.strip().lower() for d in dims]
     qcol = next((d for d in low if any(k in d for k in ("quer", "keyword", "requête", "suchanfrage",
                                                                "consulta", "mot"))), None)
     pcol = next((d for d in low if any(k in d for k in ("page", "url", "landing", "seite", "página",
                                                                "pagina"))), None)
+    return qcol, pcol
+
+
+def cannibalization(rows, min_share):
+    dims, recs = normalize(rows)
+    qcol, pcol = query_page_columns(dims)
     if not qcol or not pcol:
         sys.exit(f"Need both a query and a page column; found {dims}. Export query+page rows "
                  "(GSC API, Search Analytics for Sheets, or Looker Studio).")
@@ -223,6 +237,148 @@ def cannibalization(rows, min_share):
                                   for r in competing]})
     out.sort(key=lambda r: -r["impressions"])
     return {"cannibalized": out}
+
+
+STOPWORDS = set("""a an the and or of for to in on at by with from is are be my your our how what why when
+where which who can do does vs versus near me de la le les des du un une et pour en sur avec der die das und
+für mit von zu el los las del y para con por que""".split())
+TITLE_PX = 600
+
+
+def _variants(w):
+    """A word and its likely singular forms, so "invoices" matches "invoice" and "agencies" "agency"."""
+    out = {w}
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        out.add(w[:-1])
+    if len(w) > 4 and w.endswith("es"):
+        out.add(w[:-2])
+    if len(w) > 4 and w.endswith("ies"):
+        out.add(w[:-3] + "y")
+    if len(w) > 5 and w.endswith("ing"):  # writing -> write / writ, planning -> plann
+        out |= {w[:-3], w[:-3] + "e"}
+    if len(w) > 4 and w.endswith("e"):    # write -> writ, so it meets "writing"
+        out.add(w[:-1])
+    return out
+
+
+def _words(text):
+    return [w for w in re.findall(r"[\w']+", (text or "").lower()) if w not in STOPWORDS]
+
+
+def _covers(text_words, term):
+    pool = set()
+    for w in text_words:
+        pool |= _variants(w)
+    return bool(_variants(term) & pool)
+
+
+def title_issues(title, query, px=None, visible_part=None):
+    """Return (level, [issues], info) for one page title against its top query."""
+    if not title:
+        return "FAIL", ["no <title>"], {}
+    issues, level = [], "PASS"
+    width = px(title) if px else len(title) * 10
+    shown = visible_part(title, TITLE_PX) if visible_part else title[:60]
+    info = {"chars": len(title), "px": width, "visible": shown}
+    if query:
+        q = list(dict.fromkeys(_words(query)))
+        have, seen = _words(title), _words(shown)
+        missing = [t for t in q if not _covers(have, t)]
+        hidden = [t for t in q if _covers(have, t) and not _covers(seen, t)]
+        if q and len(missing) == len(q):
+            issues.append(f"misses the keyword \"{query}\" entirely")
+            level = "FAIL"
+        elif missing:
+            issues.append(f"keyword only partly there (missing: {', '.join(missing)})")
+            level = "WARN"
+        if hidden:
+            issues.append(f"keyword falls after the cut-off ({', '.join(hidden)} hidden by \"...\")")
+            level = "FAIL" if level == "FAIL" else "WARN"
+    if width > TITLE_PX:
+        issues.append(f"cut off in results (~{width}px > {TITLE_PX}px, {len(title)} chars)")
+        level = "FAIL" if level == "FAIL" else "WARN"
+    elif len(title) < 30:
+        issues.append(f"short ({len(title)} chars): room for the keyword and a reason to click")
+        if level == "PASS":
+            level = "INFO"
+    return level, issues, info
+
+
+def _html_file_for(url, html_dir):
+    path = urllib.parse.urlparse(url).path.strip("/")
+    names = ["index.html"] if not path else [f"{path}.html", f"{path}/index.html", path.replace("/", "__") + ".html",
+                                              path]
+    for n in names:
+        f = os.path.join(html_dir, n)
+        if os.path.isfile(f):
+            return f
+    return None
+
+
+def fetch_titles(urls, html_dir=None, workers=8):
+    """{url: title or None}. Uses seo_check's fetch/parser so redirects, gzip and charsets behave the same."""
+    import seo_check  # noqa: E402  (sibling script; only needed for this mode)
+
+    def one(u):
+        if html_dir:
+            f = _html_file_for(u, html_dir)
+            if not f:
+                return u, None, "no matching file in --html-dir"
+            res = seo_check.load_local(f)
+        else:
+            res = seo_check.fetch(u)
+            if res["error"] or res["status"] != 200:
+                return u, None, res["error"] or f"HTTP {res['status']}"
+        return u, seo_check.parse_html(seo_check.decode(res)).title, None
+    with ThreadPoolExecutor(workers) as ex:
+        return {u: (t, err) for u, t, err in ex.map(one, urls)}
+
+
+def titles(rows, html_dir=None, max_pages=50, min_impr=0, base=None):
+    import lengths  # noqa: E402
+
+    dims, recs = normalize(rows)
+    qcol, pcol = query_page_columns(dims)
+    if not pcol:
+        sys.exit(f"Need a page column; found {dims}. Use Pages.csv or a query + page export.")
+    by_page = defaultdict(list)
+    for r in recs:
+        by_page[r[pcol]].append(r)
+    pages = []
+    for page, rs in by_page.items():
+        impr = sum(r["impressions"] for r in rs)
+        if impr < min_impr:
+            continue
+        top = max(rs, key=lambda r: r["impressions"]) if qcol else None
+        pages.append({"page": page, "impressions": impr, "clicks": sum(r["clicks"] for r in rs),
+                      "query": top[qcol] if top else None,
+                      "query_impressions": top["impressions"] if top else None,
+                      "position": top["position"] if top else rs[0]["position"]})
+    pages.sort(key=lambda p: -p["impressions"])
+    pages = pages[:max_pages]
+
+    def full(u):
+        return urllib.parse.urljoin(base, u) if base and not u.startswith(("http://", "https://")) else u
+    got = fetch_titles([full(p["page"]) for p in pages], html_dir=html_dir)
+    counts = defaultdict(int)
+    for p in pages:
+        title, err = got[full(p["page"])]
+        if title:
+            counts[title] += 1
+    rank = {"FAIL": 0, "WARN": 1, "INFO": 2, "PASS": 3}
+    for p in pages:
+        title, err = got[full(p["page"])]
+        p["title"] = title
+        if err:
+            p.update(level="INFO", issues=[f"couldn't read the title ({err})"], chars=None, px=None)
+            continue
+        level, issues, info = title_issues(title, p["query"], lengths.px, lengths.visible_part)
+        if title and counts[title] > 1:
+            issues.append(f"same title as {counts[title] - 1} other page(s)")
+            level = "WARN" if level in ("PASS", "INFO") else level
+        p.update(level=level, issues=issues, **info)
+    pages.sort(key=lambda p: (rank[p["level"]], -p["impressions"]))
+    return {"keyword_check": bool(qcol), "pages": pages}
 
 
 # --------------------------------------------------------------------------
@@ -293,9 +449,30 @@ def render_cannibalization(res, top):
     return "\n".join(lines) + "\n"
 
 
+def render_titles(res, top):
+    icon = {"FAIL": "❌", "WARN": "⚠️", "INFO": "ℹ️", "PASS": "✅"}
+    pages = res["pages"]
+    bad = [p for p in pages if p["level"] in ("FAIL", "WARN")]
+    lines = ["## Titles vs. top queries (the `site:` check)", "",
+             f"{len(bad)} of {len(pages)} pages need a new title." +
+             ("" if res["keyword_check"] else " Keyword check skipped: this export has no query column "
+                                               "(use a query + page export)."), ""]
+    rows = []
+    for p in pages[:top]:
+        q = f"{p['query']} ({_fmt(p['query_impressions'])})" if p.get("query") else "-"
+        size = f"{p['chars']} / ~{p['px']}px" if p.get("chars") else "-"
+        rows.append([f"{icon[p['level']]} {p['page']}", q, p.get("title") or "-", size,
+                     "; ".join(p["issues"]) or "ok"])
+    lines.append(table(["Page", "Top query (impr.)", "Live title", "Chars / px", "Issue"], rows))
+    lines += ["", "Google shows about 600 px of a title (roughly 50-60 characters) and rewrites titles that are "
+                  "too long, stuffed or don't match the query. Put the top query near the start, then a reason "
+                  "to click. Check exact counts with lengths.py before publishing."]
+    return "\n".join(lines) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=["quick-wins", "decliners", "cannibalization"])
+    ap.add_argument("mode", choices=["quick-wins", "decliners", "cannibalization", "titles"])
     ap.add_argument("path")
     ap.add_argument("--min-impressions", type=float, default=100,
                     help="quick-wins: impression floor for low-CTR rows (default 100)")
@@ -303,12 +480,26 @@ def main(argv=None):
     ap.add_argument("--min-share", type=float, default=0.1,
                     help="cannibalization: min impression share per URL (default 0.1)")
     ap.add_argument("--swap", action="store_true", help="decliners: treat the 2nd date range as current")
+    ap.add_argument("--html-dir", help="titles: read titles from a static build folder instead of fetching")
+    ap.add_argument("--base", help="titles: site origin for relative page paths")
+    ap.add_argument("--max-pages", type=int, default=50, help="titles: pages to check (default 50)")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     a = ap.parse_args(argv)
 
     tables = load_tables(a.path)
+    if a.mode == "titles":  # one table with a page column; prefer query + page rows
+        scored = []
+        for name, rows in tables.items():
+            if rows:
+                q, pg = query_page_columns(split_columns(rows)[0])
+                if pg:
+                    scored.append((bool(q), name))
+        if not scored:
+            sys.exit("titles needs Pages.csv or a query + page export (no page column found)")
+        best = max(scored)[1]
+        tables = {best: tables[best]}
     results, md = {}, []
     for name, rows in tables.items():
         if not rows:
@@ -316,6 +507,9 @@ def main(argv=None):
         if a.mode == "quick-wins":
             res = quick_wins(rows, a.min_impressions)
             md.append(render_quick_wins(name, res, a.top))
+        elif a.mode == "titles":
+            res = titles(rows, html_dir=a.html_dir, max_pages=a.max_pages, base=a.base)
+            md.append(render_titles(res, a.top))
         elif a.mode == "decliners":
             res = decliners(rows, a.min_clicks_lost, a.swap)
             md.append(render_decliners(name, res, a.top))

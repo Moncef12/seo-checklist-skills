@@ -1,8 +1,7 @@
-# Shared scripts live in shared/ and are copied into each skill so every skill
-# folder stays self-contained (works when installed on its own or zipped for Claude.ai).
-SEO_CHECK_SKILLS := seo-audit seo-technical seo-on-page
-GSC_SKILLS       := seo-audit seo-quick-wins seo-content
-LENGTH_SKILLS    := seo-audit seo-on-page seo-quick-wins
+# Shared scripts live in shared/ and are copied into each skill so every skill folder stays
+# self-contained (works when installed on its own or zipped for Claude.ai). Every skill that runs
+# scripts gets all of them: the modules import each other, and one rule is simpler than five lists.
+SCRIPT_SKILLS := seo-audit seo-technical seo-on-page seo-quick-wins seo-content
 CLAUDE ?= claude
 
 .PHONY: sync check-sync test lint validate package demo eval all
@@ -10,16 +9,18 @@ CLAUDE ?= claude
 all: sync test lint validate
 
 sync:
-	@for s in $(SEO_CHECK_SKILLS); do cp shared/seo_check.py skills/$$s/scripts/; done
-	@for s in $(GSC_SKILLS); do cp shared/gsc_analyze.py skills/$$s/scripts/; done
-	@for s in $(LENGTH_SKILLS); do cp shared/lengths.py skills/$$s/scripts/; done
-	@echo "synced shared scripts into skills"
+	@for s in $(SCRIPT_SKILLS); do mkdir -p skills/$$s/scripts; rm -f skills/$$s/scripts/*.py; \
+		cp shared/*.py skills/$$s/scripts/; done
+	@echo "synced shared scripts into: $(SCRIPT_SKILLS)"
 
 check-sync:
 	@fail=0; \
-	for s in $(SEO_CHECK_SKILLS); do cmp -s shared/seo_check.py skills/$$s/scripts/seo_check.py || { echo "out of sync: $$s/seo_check.py"; fail=1; }; done; \
-	for s in $(GSC_SKILLS); do cmp -s shared/gsc_analyze.py skills/$$s/scripts/gsc_analyze.py || { echo "out of sync: $$s/gsc_analyze.py"; fail=1; }; done; \
-	for s in $(LENGTH_SKILLS); do cmp -s shared/lengths.py skills/$$s/scripts/lengths.py || { echo "out of sync: $$s/lengths.py"; fail=1; }; done; \
+	for s in $(SCRIPT_SKILLS); do \
+		for f in shared/*.py; do cmp -s $$f skills/$$s/scripts/$$(basename $$f) || \
+			{ echo "out of sync: $$s/scripts/$$(basename $$f)"; fail=1; }; done; \
+		for f in skills/$$s/scripts/*.py; do [ -f shared/$$(basename $$f) ] || \
+			{ echo "stale copy: $$f (not in shared/)"; fail=1; }; done; \
+	done; \
 	[ $$fail -eq 0 ] && echo "scripts in sync" || { echo "run: make sync"; exit 1; }
 
 test:
